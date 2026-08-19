@@ -9,12 +9,19 @@ export async function GET() {
     try {
       list = await db.select().from(locations);
     } catch {
-      list = initialLocations;
+      list = [];
     }
 
-    if (list.length === 0) list = initialLocations;
+    const mapped = list.map((loc: any) => ({
+      id: loc.id,
+      name: loc.name,
+      building: loc.building,
+      floor: loc.floor,
+      description: loc.description,
+      device_count: loc.deviceCount !== undefined ? loc.deviceCount : loc.device_count || 0,
+    }));
 
-    return NextResponse.json({ success: true, count: list.length, data: list });
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

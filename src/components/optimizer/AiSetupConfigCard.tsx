@@ -26,52 +26,81 @@ import {
 import { AiProvider } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 
+const normalizeProvider = (p?: string): AiProvider => {
+  if (p === 'gemini' || p === 'google' || p === 'google_gemini') return 'google_gemini';
+  if (p === 'openai' || p === 'chatgpt') return 'openai';
+  if (p === 'claude' || p === 'anthropic' || p === 'anthropic_claude') return 'anthropic_claude';
+  if (p === 'ollama' || p === 'local' || p === 'local_ollama') return 'local_ollama';
+  return 'google_gemini';
+};
+
+const providerModels: Record<AiProvider, { label: string; models: string[]; docsUrl: string }> = {
+  google_gemini: {
+    label: 'Google Gemini AI',
+    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro'],
+    docsUrl: 'https://aistudio.google.com/app/apikey',
+  },
+  openai: {
+    label: 'OpenAI',
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+    docsUrl: 'https://platform.openai.com/api-keys',
+  },
+  anthropic_claude: {
+    label: 'Anthropic Claude',
+    models: ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest'],
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  local_ollama: {
+    label: 'Local LLM / Ollama (On-Premise NOC)',
+    models: ['deepseek-r1:14b', 'llama3.3:70b', 'mistral-nemo:12b', 'qwen2.5-coder:14b'],
+    docsUrl: 'http://localhost:11434',
+  },
+};
+
 export const AiSetupConfigCard: React.FC = () => {
   const { aiConfig, updateAiConfig, testAiConnection } = useNms();
 
-  const [provider, setProvider] = useState<AiProvider>(aiConfig.provider);
-  const [model, setModel] = useState<string>(aiConfig.model);
-  const [apiKey, setApiKey] = useState<string>(aiConfig.api_key);
-  const [customEndpoint, setCustomEndpoint] = useState<string>(aiConfig.custom_endpoint || '');
-  const [temperature, setTemperature] = useState<number>(aiConfig.temperature);
-  const [maxTokens, setMaxTokens] = useState<number>(aiConfig.max_tokens);
-  const [autoScanEnabled, setAutoScanEnabled] = useState<boolean>(aiConfig.auto_scan_enabled);
-  const [autoScanInterval, setAutoScanInterval] = useState<number>(aiConfig.auto_scan_interval_minutes);
-  const [autoGenerateScripts, setAutoGenerateScripts] = useState<boolean>(aiConfig.auto_generate_scripts);
-  const [notifyOnAnomaly, setNotifyOnAnomaly] = useState<boolean>(aiConfig.notify_on_anomaly);
+  const [provider, setProvider] = useState<AiProvider>(() => normalizeProvider(aiConfig?.provider));
+  const [model, setModel] = useState<string>(aiConfig?.model || 'gemini-2.5-flash');
+  const [apiKey, setApiKey] = useState<string>(aiConfig?.api_key || '');
+  const [customEndpoint, setCustomEndpoint] = useState<string>(aiConfig?.custom_endpoint || '');
+  const [temperature, setTemperature] = useState<number>(aiConfig?.temperature ?? 0.2);
+  const [maxTokens, setMaxTokens] = useState<number>(aiConfig?.max_tokens ?? 4096);
+  const [autoScanEnabled, setAutoScanEnabled] = useState<boolean>(aiConfig?.auto_scan_enabled ?? true);
+  const [autoScanInterval, setAutoScanInterval] = useState<number>(aiConfig?.auto_scan_interval_minutes ?? 15);
+  const [autoGenerateScripts, setAutoGenerateScripts] = useState<boolean>(aiConfig?.auto_generate_scripts ?? true);
+  const [notifyOnAnomaly, setNotifyOnAnomaly] = useState<boolean>(aiConfig?.notify_on_anomaly ?? true);
 
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; latency: number; message: string } | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const providerModels: Record<AiProvider, { label: string; models: string[]; docsUrl: string }> = {
-    google_gemini: {
-      label: 'Google Gemini AI',
-      models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro'],
-      docsUrl: 'https://aistudio.google.com/app/apikey',
-    },
-    openai: {
-      label: 'OpenAI',
-      models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-      docsUrl: 'https://platform.openai.com/api-keys',
-    },
-    anthropic_claude: {
-      label: 'Anthropic Claude',
-      models: ['claude-3-7-sonnet-latest', 'claude-3-5-haiku-latest'],
-      docsUrl: 'https://console.anthropic.com/settings/keys',
-    },
-    local_ollama: {
-      label: 'Local LLM / Ollama (On-Premise NOC)',
-      models: ['deepseek-r1:14b', 'llama3.3:70b', 'mistral-nemo:12b', 'qwen2.5-coder:14b'],
-      docsUrl: 'http://localhost:11434',
-    },
-  };
+  // Sync state if aiConfig updates from backend
+  React.useEffect(() => {
+    if (aiConfig) {
+      const validProvider = normalizeProvider(aiConfig.provider);
+      setProvider(validProvider);
+      setModel(aiConfig.model || (providerModels[validProvider]?.models[0] ?? 'gemini-2.5-flash'));
+      setApiKey(aiConfig.api_key || '');
+      setCustomEndpoint(aiConfig.custom_endpoint || '');
+      if (aiConfig.temperature !== undefined) setTemperature(aiConfig.temperature);
+      if (aiConfig.max_tokens !== undefined) setMaxTokens(aiConfig.max_tokens);
+      if (aiConfig.auto_scan_enabled !== undefined) setAutoScanEnabled(aiConfig.auto_scan_enabled);
+      if (aiConfig.auto_scan_interval_minutes !== undefined) setAutoScanInterval(aiConfig.auto_scan_interval_minutes);
+      if (aiConfig.auto_generate_scripts !== undefined) setAutoGenerateScripts(aiConfig.auto_generate_scripts);
+      if (aiConfig.notify_on_anomaly !== undefined) setNotifyOnAnomaly(aiConfig.notify_on_anomaly);
+    }
+  }, [aiConfig]);
+
+  const activeProviderConfig = providerModels[provider] || providerModels.google_gemini;
 
   const handleProviderChange = (newProvider: AiProvider) => {
-    setProvider(newProvider);
-    setModel(providerModels[newProvider].models[0]);
-    if (newProvider === 'local_ollama' && !customEndpoint) {
+    const valid = normalizeProvider(newProvider);
+    setProvider(valid);
+    const targetConfig = providerModels[valid] || providerModels.google_gemini;
+    setModel(targetConfig.models[0]);
+    if (valid === 'local_ollama' && !customEndpoint) {
       setCustomEndpoint('http://192.168.1.100:11434/v1');
     }
   };
@@ -194,7 +223,7 @@ export const AiSetupConfigCard: React.FC = () => {
               onChange={(e) => setModel(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-m3-xl bg-m3-surface-container-lowest border border-m3-outline-variant/40 text-xs font-mono text-m3-on-surface focus:outline-hidden focus:ring-2 focus:ring-m3-primary"
             >
-              {providerModels[provider].models.map((m) => (
+              {activeProviderConfig.models.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
@@ -206,12 +235,12 @@ export const AiSetupConfigCard: React.FC = () => {
           <div className="text-[11px] text-m3-on-surface-variant flex items-center justify-between pt-1">
             <span>Dapatkan kredensial resmi:</span>
             <a
-              href={providerModels[provider].docsUrl}
+              href={activeProviderConfig.docsUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-m3-primary font-semibold hover:underline inline-flex items-center gap-1"
             >
-              <span>Buka Console {providerModels[provider].label}</span>
+              <span>Buka Console {activeProviderConfig.label}</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
@@ -228,7 +257,7 @@ export const AiSetupConfigCard: React.FC = () => {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-m3-on-surface">
-                API Key {providerModels[provider].label}
+                API Key {activeProviderConfig.label}
               </label>
               <span className="text-[10px] text-m3-on-surface-variant font-mono">Terenkripsi Lokal</span>
             </div>

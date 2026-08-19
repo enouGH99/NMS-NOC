@@ -9,9 +9,8 @@ export async function GET() {
     try {
       devList = await db.select().from(devices);
     } catch {
-      devList = initialDevices;
+      devList = [];
     }
-    if (devList.length === 0) devList = initialDevices;
 
     const nodes = devList.map((d: any) => ({
       id: d.id,

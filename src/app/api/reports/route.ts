@@ -10,14 +10,26 @@ export async function GET() {
     try {
       schedules = await db.select().from(reportSchedules).orderBy(desc(reportSchedules.createdAt));
     } catch {
-      schedules = initialReportSchedules;
+      schedules = [];
     }
-    if (schedules.length === 0) schedules = initialReportSchedules;
+
+    const mappedSchedules = schedules.map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      frequency: s.frequency,
+      format: s.format,
+      recipients: s.recipients || [],
+      created_by: s.createdBy || s.created_by,
+      last_sent_at: s.lastSentAt ? new Date(s.lastSentAt).toISOString() : undefined,
+      next_run_at: s.nextRunAt ? new Date(s.nextRunAt).toISOString() : new Date().toISOString(),
+      enabled: s.enabled,
+      created_at: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        schedules,
+        schedules: mappedSchedules,
         capacityTrend: initialCapacityData,
         monthlySla: [
           { month: 'Mar 2026', slaPercent: 99.92, incidents: 1, avgMtrMinutes: 12 },

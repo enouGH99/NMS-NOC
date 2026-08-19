@@ -9,6 +9,18 @@ export const PingGaugeWidget: React.FC = () => {
   const { devices } = useNms();
   const coreRouter = devices.find((d) => d.id === 'dev-1') || devices[0];
 
+  if (!coreRouter) {
+    return (
+      <M3Card className="p-5 flex flex-col justify-center items-center text-center h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs min-h-[220px]">
+        <Activity className="w-10 h-10 text-m3-primary/50 mb-3" />
+        <h3 className="text-base font-bold text-m3-on-surface">Kesehatan Core Gateway</h3>
+        <p className="text-xs text-m3-on-surface-variant max-w-sm mt-1">
+          Belum ada perangkat terdaftar di database. Tambahkan router atau switch untuk memantau CPU, RAM, Suhu, dan Latensi.
+        </p>
+      </M3Card>
+    );
+  }
+
   return (
     <M3Card className="p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs">
       {/* Header with Responsive Layout */}

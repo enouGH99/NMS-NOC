@@ -10,11 +10,23 @@ export async function GET() {
     try {
       list = await db.select().from(autoDiscoveredDevices);
     } catch {
-      list = initialAutoDiscovered;
+      list = [];
     }
-    if (list.length === 0) list = initialAutoDiscovered;
 
-    return NextResponse.json({ success: true, count: list.length, data: list });
+    const mapped = list.map((d: any) => ({
+      id: d.id,
+      ip: d.ip,
+      mac: d.mac,
+      suggested_name: d.suggestedName || d.suggested_name,
+      type: d.type,
+      snmp_detected: d.snmpDetected !== undefined ? d.snmpDetected : d.snmp_detected,
+      vendor: d.vendor,
+      response_time: d.responseTime !== undefined ? d.responseTime : d.response_time,
+      status: d.status,
+      discovered_at: d.discoveredAt ? new Date(d.discoveredAt).toISOString() : new Date().toISOString(),
+    }));
+
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

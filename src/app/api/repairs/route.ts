@@ -10,11 +10,27 @@ export async function GET() {
     try {
       records = await db.select().from(repairRecords).orderBy(desc(repairRecords.createdAt));
     } catch {
-      records = initialRepairRecords;
+      records = [];
     }
-    if (records.length === 0) records = initialRepairRecords;
 
-    return NextResponse.json({ success: true, count: records.length, data: records });
+    const mapped = records.map((r: any) => ({
+      id: r.id,
+      ticket_code: r.ticketCode || r.ticket_code,
+      device_id: r.deviceId || r.device_id,
+      device_name: r.deviceName || r.device_name,
+      ip_address: r.ipAddress || r.ip_address,
+      user_id: r.userId || r.user_id,
+      user_name: r.userName || r.user_name,
+      problem: r.problem,
+      action: r.action,
+      result: r.result,
+      status: r.status,
+      photo_urls: r.photoUrls || r.photo_urls || [],
+      created_at: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
+      updated_at: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
+    }));
+
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

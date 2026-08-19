@@ -172,9 +172,10 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
               onChange={(e) => setLocationId(e.target.value)}
               className="w-full h-12 rounded-m3-md border border-m3-outline-variant bg-m3-surface-container-lowest px-3 text-sm text-m3-on-surface focus:ring-2 focus:ring-m3-primary outline-none"
             >
+              <option value="">-- Tanpa Lokasi Spesifik --</option>
               {locations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
-                  {loc.name}
+                  {loc.name} ({loc.building})
                 </option>
               ))}
             </select>

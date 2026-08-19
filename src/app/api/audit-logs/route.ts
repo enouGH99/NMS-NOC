@@ -10,11 +10,21 @@ export async function GET() {
     try {
       logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
     } catch {
-      logs = initialAuditLogs;
+      logs = [];
     }
-    if (logs.length === 0) logs = initialAuditLogs;
 
-    return NextResponse.json({ success: true, count: logs.length, data: logs });
+    const mapped = logs.map((l: any) => ({
+      id: l.id,
+      user_id: l.userId || l.user_id,
+      user_name: l.userName || l.user_name,
+      user_role: l.userRole || l.user_role,
+      action: l.action,
+      details: l.details,
+      ip_address: l.ipAddress || l.ip_address,
+      timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : new Date().toISOString(),
+    }));
+
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

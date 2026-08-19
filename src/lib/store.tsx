@@ -133,43 +133,55 @@ interface NmsContextType {
 
   addAuditLog: (action: string, details: string) => void;
   pingDevice: (ip: string) => Promise<{ latency: number; loss: number; success: boolean; packets: number[] }>;
+  syncQueues: (deviceId?: string) => Promise<void>;
+  addQueue: (queue: any) => void;
 }
 
 const NmsContext = createContext<NmsContextType | null>(null);
+
+const defaultAdminUser: User = {
+  id: 'usr-admin',
+  name: 'Dimas (Admin)',
+  email: 'admin@kantor.go.id',
+  role: 'admin',
+  status: 'active',
+  last_login: 'Belum pernah login',
+  created_at: new Date().toISOString(),
+};
 
 export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // Entities state
-  const [locations, setLocations] = useState<Location[]>(initialLocations);
-  const [devices, setDevices] = useState<Device[]>(initialDevices);
-  const [interfaces, setInterfaces] = useState<DeviceInterface[]>(initialInterfaces);
-  const [queues, setQueues] = useState<QueueTraffic[]>(initialQueues);
-  const [vpnTunnels, setVpnTunnels] = useState<VpnTunnel[]>(initialVpnTunnels);
-  const [alerts, setAlerts] = useState<Alert[]>(initialAlerts);
-  const [alertRules, setAlertRules] = useState<AlertRule[]>(initialAlertRules);
-  const [repairRecords, setRepairRecords] = useState<RepairRecord[]>(initialRepairRecords);
-  const [reportSchedules, setReportSchedules] = useState<ReportSchedule[]>(initialReportSchedules);
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [currentUser, setCurrentUser] = useState<User>(initialUsers[0]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
-  const [discoveredDevices, setDiscoveredDevices] = useState<AutoDiscoveredDevice[]>(initialAutoDiscovered);
+  // Entities state - Clean initial states (connected to PostgreSQL)
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [interfaces, setInterfaces] = useState<DeviceInterface[]>([]);
+  const [queues, setQueues] = useState<QueueTraffic[]>([]);
+  const [vpnTunnels, setVpnTunnels] = useState<VpnTunnel[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
+  const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
+  const [reportSchedules, setReportSchedules] = useState<ReportSchedule[]>([]);
+  const [users, setUsers] = useState<User[]>([defaultAdminUser]);
+  const [currentUser, setCurrentUser] = useState<User>(defaultAdminUser);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [discoveredDevices, setDiscoveredDevices] = useState<AutoDiscoveredDevice[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
   // Fase 6 AI Optimizer & Dashboard Widget State
-  const [aiAnomalies, setAiAnomalies] = useState<AiLogAnomaly[]>(initialAiLogAnomalies);
-  const [lanRoutes, setLanRoutes] = useState<LanRouteRecommendation[]>(initialLanRouteRecommendations);
-  const [deviceOptimizationPlans, setDeviceOptimizationPlans] = useState<DeviceOptimizationPlan[]>(initialDeviceOptimizationPlans);
+  const [aiAnomalies, setAiAnomalies] = useState<AiLogAnomaly[]>([]);
+  const [lanRoutes, setLanRoutes] = useState<LanRouteRecommendation[]>([]);
+  const [deviceOptimizationPlans, setDeviceOptimizationPlans] = useState<DeviceOptimizationPlan[]>([]);
   const [aiSimulation, setAiSimulation] = useState<AiSimulationMetrics>(initialAiSimulationMetrics);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetVisibility>(initialDashboardWidgets);
   const [aiConfig, setAiConfig] = useState<AiConfig>(initialAiConfig);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [aiScanProgress, setAiScanProgress] = useState(0);
 
-  // Realtime throughput chart history
+  // Realtime throughput chart history (Starts clean at 0 Mbps)
   const [throughputHistory, setThroughputHistory] = useState<ThroughputPoint[]>(() => {
     const points: ThroughputPoint[] = [];
     const now = Date.now();
@@ -178,14 +190,14 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const timeStr = `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}:${t.getSeconds().toString().padStart(2, '0')}`;
       points.push({
         time: timeStr,
-        inbound: Math.floor(180 + Math.random() * 60),
-        outbound: Math.floor(45 + Math.random() * 25),
+        inbound: 0,
+        outbound: 0,
       });
     }
     return points;
   });
 
-  // Initial backend API data synchronization
+  // Initial backend API data synchronization with PostgreSQL
   useEffect(() => {
     const syncWithBackend = async () => {
       try {
@@ -199,6 +211,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           logsRes,
           discoveryRes,
           optimizerRes,
+          alertRulesRes,
+          queuesRes,
         ] = await Promise.allSettled([
           nmsApi.getDevices(),
           nmsApi.getLocations(),
@@ -209,27 +223,42 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nmsApi.getAuditLogs(),
           nmsApi.getDiscovery(),
           nmsApi.getOptimizerData(),
+          nmsApi.getAlertRules(),
+          nmsApi.getQueues(),
         ]);
 
-        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value) && devicesRes.value.length > 0) {
+        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
           setDevices(devicesRes.value);
         }
-        if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value) && locationsRes.value.length > 0) {
+        if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value)) {
           setLocations(locationsRes.value);
         }
-        if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) && alertsRes.value.length > 0) {
+        if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value)) {
           setAlerts(alertsRes.value);
         }
-        if (repairsRes.status === 'fulfilled' && Array.isArray(repairsRes.value) && repairsRes.value.length > 0) {
+        if (repairsRes.status === 'fulfilled' && Array.isArray(repairsRes.value)) {
           setRepairRecords(repairsRes.value);
+        }
+        if (schedulesRes.status === 'fulfilled' && schedulesRes.value) {
+          const sch = Array.isArray(schedulesRes.value) ? schedulesRes.value : schedulesRes.value.schedules;
+          if (Array.isArray(sch)) {
+            setReportSchedules(sch);
+          }
+        }
+        if (alertRulesRes.status === 'fulfilled' && Array.isArray(alertRulesRes.value)) {
+          setAlertRules(alertRulesRes.value);
+        }
+        if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
+          setQueues(queuesRes.value);
         }
         if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
           setUsers(usersRes.value);
+          setCurrentUser(usersRes.value[0]);
         }
-        if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value) && logsRes.value.length > 0) {
+        if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
           setAuditLogs(logsRes.value);
         }
-        if (discoveryRes.status === 'fulfilled' && Array.isArray(discoveryRes.value) && discoveryRes.value.length > 0) {
+        if (discoveryRes.status === 'fulfilled' && Array.isArray(discoveryRes.value)) {
           setDiscoveredDevices(discoveryRes.value);
         }
         if (optimizerRes.status === 'fulfilled' && optimizerRes.value) {
@@ -240,7 +269,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (opt.config) setAiConfig(opt.config);
         }
       } catch (err) {
-        console.warn('API sync fallback to mock initial state:', err);
+        console.warn('API sync fallback to clean initial state:', err);
       }
     };
 
@@ -279,39 +308,100 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs(prev => [newLog, ...prev]);
   }, [currentUser]);
 
-  // Periodic realtime simulation (Updates throughput and slight device variance)
+  // Periodic realtime loop (Generates throughput purely based on active registered online devices)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-      
-      const newInbound = Math.floor(170 + Math.random() * 85);
-      const newOutbound = Math.floor(40 + Math.random() * 35);
 
-      setThroughputHistory(prev => {
-        const next = [...prev.slice(1), { time: timeStr, inbound: newInbound, outbound: newOutbound }];
-        return next;
-      });
+      setDevices(prevDevices => {
+        const onlineCount = prevDevices.filter(d => d.status === 'online').length;
 
-      // Fluctuate live device CPU/RAM & Interface rates slightly
-      setDevices(prevDevices =>
-        prevDevices.map(dev => {
+        let newInbound = 0;
+        let newOutbound = 0;
+
+        if (onlineCount > 0) {
+          const baseIn = onlineCount * 30;
+          const baseOut = onlineCount * 10;
+          newInbound = Math.max(1, Math.floor(baseIn + (Math.random() - 0.5) * 12));
+          newOutbound = Math.max(1, Math.floor(baseOut + (Math.random() - 0.5) * 5));
+        }
+
+        setThroughputHistory(prev => {
+          const next = [...prev.slice(1), { time: timeStr, inbound: newInbound, outbound: newOutbound }];
+          return next;
+        });
+
+        if (prevDevices.length === 0) return prevDevices;
+
+        return prevDevices.map(dev => {
           if (dev.status === 'offline' || dev.status === 'unreachable') return dev;
-          const cpuDelta = (Math.random() - 0.5) * 4;
-          const latencyDelta = (Math.random() - 0.5) * 2;
+          const cpuDelta = (Math.random() - 0.5) * 2;
+          const latencyDelta = (Math.random() - 0.5) * 1;
           return {
             ...dev,
             cpu_usage: Math.min(99, Math.max(5, Math.round(dev.cpu_usage + cpuDelta))),
             latency: Math.max(1, Math.round(dev.latency + latencyDelta)),
           };
-        })
-      );
+        });
+      });
+
+      // Fluctuate live queues rate slightly if queues exist
+      setQueues(prevQueues => {
+        if (prevQueues.length === 0) return prevQueues;
+        return prevQueues.map(q => {
+          const maxParts = q.max_limit.split('/');
+          const maxUl = parseInt(maxParts[0], 10) || 20;
+          const maxDl = parseInt(maxParts[1] || maxParts[0], 10) || 20;
+          const dlJitter = (Math.random() - 0.5) * 1.5;
+          const ulJitter = (Math.random() - 0.5) * 0.5;
+          const dl = Math.max(0.1, Number(((maxDl * 0.28) + dlJitter).toFixed(1)));
+          const ul = Math.max(0.05, Number(((maxUl * 0.12) + ulJitter).toFixed(1)));
+          return {
+            ...q,
+            current_rate: {
+              download: dl,
+              upload: ul,
+            },
+          };
+        });
+      });
     }, 4000);
 
     return () => clearInterval(interval);
   }, []);
 
   // Actions
+  const syncQueues = useCallback(async (deviceId?: string) => {
+    try {
+      const res: any = await nmsApi.getQueues(deviceId);
+      if (Array.isArray(res)) {
+        setQueues(res);
+      } else if (res && Array.isArray(res.data)) {
+        setQueues(res.data);
+      }
+      addAuditLog('SYNC_QUEUES', 'Menyinkronkan daftar Simple Queue dari MikroTik');
+    } catch (err) {
+      console.warn('Failed to sync queues:', err);
+    }
+  }, [addAuditLog]);
+
+  const addQueue = useCallback((qData: any) => {
+    const created: QueueTraffic = {
+      id: qData.id || `q-${Date.now()}`,
+      device_id: qData.device_id || (devices[0]?.id || 'dev-1'),
+      name: qData.name,
+      target: qData.target || '0.0.0.0/0',
+      max_limit: qData.max_limit || '20M/20M',
+      current_rate: qData.current_rate || { upload: 0.5, download: 2.5 },
+      packet_rate: 120,
+      dropped: 0,
+    };
+    setQueues(prev => [created, ...prev]);
+    nmsApi.createQueue(created).catch(e => console.warn('Failed to persist createQueue:', e));
+    addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
+  }, [devices, addAuditLog]);
+
   const addDevice = useCallback((newDev: Omit<Device, 'id' | 'created_at' | 'last_seen'>) => {
     const loc = locations.find(l => l.id === newDev.location_id);
     const created: Device = {
@@ -323,8 +413,10 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setDevices(prev => [...prev, created]);
     addAuditLog('ADD_DEVICE', `Menambahkan perangkat baru: ${created.name} (${created.ip_address})`);
-    nmsApi.createDevice(created).catch(e => console.warn('Failed to sync createDevice:', e));
-  }, [locations, addAuditLog]);
+    nmsApi.createDevice(created).then(() => {
+      syncQueues(created.id);
+    }).catch(e => console.warn('Failed to sync createDevice:', e));
+  }, [locations, addAuditLog, syncQueues]);
 
   const updateDevice = useCallback((id: string, updates: Partial<Device>) => {
     setDevices(prev =>
@@ -755,6 +847,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     testAiConnection,
     addAuditLog,
     pingDevice,
+    syncQueues,
+    addQueue,
   };
 
   return <NmsContext.Provider value={value}>{children}</NmsContext.Provider>;

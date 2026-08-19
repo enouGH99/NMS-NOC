@@ -13,14 +13,27 @@ export async function GET(request: NextRequest) {
     try {
       allAlerts = await db.select().from(alerts).orderBy(desc(alerts.triggeredAt));
     } catch {
-      allAlerts = initialAlerts;
+      allAlerts = [];
     }
 
-    if (allAlerts.length === 0) allAlerts = initialAlerts;
+    const mapped = allAlerts.map((a: any) => ({
+      id: a.id,
+      device_id: a.deviceId || a.device_id,
+      device_name: a.deviceName || a.device_name,
+      ip_address: a.ipAddress || a.ip_address,
+      message: a.message,
+      severity: a.severity,
+      triggered_at: a.triggeredAt ? new Date(a.triggeredAt).toISOString() : new Date().toISOString(),
+      resolved_at: a.resolvedAt ? new Date(a.resolvedAt).toISOString() : undefined,
+      acknowledged: a.acknowledged,
+      acknowledged_by: a.acknowledgedBy || a.acknowledged_by,
+      resolved_by: a.resolvedBy || a.resolved_by,
+      resolution_notes: a.resolutionNotes || a.resolution_notes,
+    }));
 
-    let filtered = allAlerts;
+    let filtered = mapped;
     if (activeOnly) {
-      filtered = filtered.filter((a) => !a.resolvedAt && !a.resolved_at);
+      filtered = filtered.filter((a) => !a.resolved_at);
     }
 
     return NextResponse.json({ success: true, count: filtered.length, data: filtered });

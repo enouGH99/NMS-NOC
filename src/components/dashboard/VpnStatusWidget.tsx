@@ -28,8 +28,14 @@ export const VpnStatusWidget: React.FC = () => {
       </div>
 
       <div className="pt-4 space-y-3 flex-1 overflow-y-auto">
-        {vpnTunnels.map((vpn) => {
-          const isConnected = vpn.status === 'connected';
+        {vpnTunnels.length === 0 ? (
+          <div className="text-center py-8 text-m3-on-surface-variant">
+            <ShieldCheck className="w-8 h-8 text-m3-primary/40 mx-auto mb-2" />
+            <p className="text-xs font-semibold">Tidak ada tunnel VPN aktif</p>
+          </div>
+        ) : (
+          vpnTunnels.map((vpn) => {
+            const isConnected = vpn.status === 'connected';
           return (
             <div
               key={vpn.id}
@@ -89,7 +95,8 @@ export const VpnStatusWidget: React.FC = () => {
               </div>
             </div>
           );
-        })}
+        })
+        )}
       </div>
     </M3Card>
   );

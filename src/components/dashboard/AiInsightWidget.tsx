@@ -44,8 +44,8 @@ export const AiInsightWidget: React.FC = () => {
           </span>
         </div>
 
-        {/* Top Critical Finding */}
-        {criticalAnom && (
+        {/* Top Critical Finding / Clean Status */}
+        {criticalAnom ? (
           <div className="p-3 rounded-m3-xl bg-amber-500/10 border border-amber-500/20 space-y-1">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -56,6 +56,16 @@ export const AiInsightWidget: React.FC = () => {
             </p>
             <p className="text-[11px] text-m3-on-surface-variant line-clamp-1">
               {criticalAnom.impact}
+            </p>
+          </div>
+        ) : (
+          <div className="p-3 rounded-m3-xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Jaringan Berjalan Normal</span>
+            </div>
+            <p className="text-xs text-m3-on-surface font-medium">
+              Tidak ada anomali atau bottleneck kritis terdeteksi oleh AI Engine.
             </p>
           </div>
         )}

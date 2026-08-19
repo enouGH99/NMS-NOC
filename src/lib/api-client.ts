@@ -58,6 +58,9 @@ export const nmsApi = {
   updateDiscoveryDevice: (id: string, action: 'approve' | 'ignore') =>
     fetchApi('/api/discovery', { method: 'PUT', body: JSON.stringify({ id, action }) }),
 
+  getQueues: (deviceId?: string) => fetchApi(`/api/queues${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  createQueue: (data: any) => fetchApi('/api/queues', { method: 'POST', body: JSON.stringify(data) }),
+
   getUsers: () => fetchApi('/api/users'),
   createUser: (data: any) => fetchApi('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (data: any) => fetchApi('/api/users', { method: 'PUT', body: JSON.stringify(data) }),

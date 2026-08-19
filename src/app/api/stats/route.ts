@@ -5,21 +5,15 @@ import { initialDevices, initialAlerts } from '@/lib/mock-data';
 
 export async function GET() {
   try {
-    let devList = [];
-    let altList = [];
+    let devList: any[] = [];
+    let altList: any[] = [];
 
     try {
       devList = await db.select().from(devices);
       altList = await db.select().from(alerts);
     } catch {
-      // Fallback to mock data if database server is not yet connected
-      devList = initialDevices;
-      altList = initialAlerts;
-    }
-
-    if (devList.length === 0) {
-      devList = initialDevices;
-      altList = initialAlerts;
+      devList = [];
+      altList = [];
     }
 
     const totalDevices = devList.length;
@@ -28,6 +22,9 @@ export async function GET() {
     const offlineCount = devList.filter((d: any) => d.status === 'offline' || d.status === 'unreachable').length;
     const activeAlertsCount = altList.filter((a: any) => !a.resolvedAt && !a.resolved_at).length;
     const slaPercent = totalDevices ? Number(((onlineCount / totalDevices) * 100).toFixed(2)) : 100;
+
+    const currentInboundMbps = onlineCount > 0 ? Math.floor(onlineCount * 30 + Math.random() * 15) : 0;
+    const currentOutboundMbps = onlineCount > 0 ? Math.floor(onlineCount * 10 + Math.random() * 6) : 0;
 
     return NextResponse.json({
       success: true,
@@ -38,8 +35,8 @@ export async function GET() {
         offlineCount,
         slaPercent,
         activeAlertsCount,
-        currentInboundMbps: Math.floor(180 + Math.random() * 60),
-        currentOutboundMbps: Math.floor(45 + Math.random() * 25),
+        currentInboundMbps,
+        currentOutboundMbps,
         timestamp: new Date().toISOString(),
       },
     });

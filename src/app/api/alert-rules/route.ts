@@ -10,11 +10,24 @@ export async function GET() {
     try {
       rules = await db.select().from(alertRules);
     } catch {
-      rules = initialAlertRules;
+      rules = [];
     }
-    if (rules.length === 0) rules = initialAlertRules;
 
-    return NextResponse.json({ success: true, count: rules.length, data: rules });
+    const mapped = rules.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      device_id: r.deviceId || r.device_id,
+      metric: r.metric,
+      condition: r.condition,
+      threshold: r.threshold,
+      duration_seconds: r.durationSeconds !== undefined ? r.durationSeconds : r.duration_seconds || 60,
+      enabled: r.enabled,
+      escalation_tier: r.escalationTier !== undefined ? r.escalationTier : r.escalation_tier || 1,
+      notify_email: r.notifyEmail !== undefined ? r.notifyEmail : r.notify_email,
+      notify_sound: r.notifySound !== undefined ? r.notifySound : r.notify_sound,
+    }));
+
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -10,11 +10,22 @@ export async function GET() {
     try {
       usersList = await db.select().from(user);
     } catch {
-      usersList = initialUsers;
+      usersList = [];
     }
-    if (usersList.length === 0) usersList = initialUsers;
 
-    return NextResponse.json({ success: true, count: usersList.length, data: usersList });
+    const mapped = usersList.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      phone: u.phone,
+      status: u.status,
+      avatar: u.image || u.avatar,
+      last_login: u.lastLogin ? new Date(u.lastLogin).toISOString() : 'Belum pernah login',
+      created_at: u.createdAt ? new Date(u.createdAt).toISOString() : new Date().toISOString(),
+    }));
+
+    return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

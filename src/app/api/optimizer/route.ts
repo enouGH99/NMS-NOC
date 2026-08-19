@@ -26,10 +26,31 @@ export async function GET() {
       // Fallback
     }
 
-    if (anomalies.length === 0) anomalies = initialAiLogAnomalies;
-    if (routes.length === 0) routes = initialLanRouteRecommendations;
-    if (plans.length === 0) plans = initialDeviceOptimizationPlans;
-    if (!config) config = initialAiConfig;
+    const normalizeProvider = (p?: string) => {
+      if (p === 'gemini' || p === 'google' || p === 'google_gemini') return 'google_gemini';
+      if (p === 'openai' || p === 'chatgpt') return 'openai';
+      if (p === 'claude' || p === 'anthropic' || p === 'anthropic_claude') return 'anthropic_claude';
+      if (p === 'ollama' || p === 'local' || p === 'local_ollama') return 'local_ollama';
+      return 'google_gemini';
+    };
+
+    const mappedConfig = config
+      ? {
+          provider: normalizeProvider(config.provider),
+          model: config.model || 'gemini-2.5-flash',
+          api_key: config.apiKey || config.api_key || '',
+          custom_endpoint: config.customEndpoint || config.custom_endpoint || '',
+          temperature: config.temperature !== undefined ? Number(config.temperature) : 0.2,
+          max_tokens: config.maxTokens !== undefined ? Number(config.maxTokens) : 4096,
+          auto_scan_enabled: config.autoScanEnabled !== undefined ? Boolean(config.autoScanEnabled) : true,
+          auto_scan_interval_minutes: config.autoScanIntervalMinutes !== undefined ? Number(config.autoScanIntervalMinutes) : 15,
+          auto_generate_scripts: config.autoGenerateScripts !== undefined ? Boolean(config.autoGenerateScripts) : true,
+          notify_on_anomaly: config.notifyOnAnomaly !== undefined ? Boolean(config.notifyOnAnomaly) : true,
+          connection_status: config.connectionStatus || config.connection_status || 'connected',
+          last_tested_at: config.lastTestedAt ? new Date(config.lastTestedAt).toISOString() : undefined,
+          response_time_ms: config.responseTimeMs || config.response_time_ms || 240,
+        }
+      : initialAiConfig;
 
     return NextResponse.json({
       success: true,
@@ -38,7 +59,7 @@ export async function GET() {
         lanRoutes: routes,
         optimizationPlans: plans,
         simulation: initialAiSimulationMetrics,
-        config,
+        config: mappedConfig,
       },
     });
   } catch (error: any) {
