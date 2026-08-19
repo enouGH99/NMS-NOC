@@ -6,7 +6,8 @@ import { useNms } from '@/lib/store';
 import { M3Dialog } from '../m3/M3Dialog';
 import { M3TextField } from '../m3/M3TextField';
 import { M3Switch } from '../m3/M3Switch';
-import { Server, ShieldCheck } from 'lucide-react';
+import { M3Button } from '../m3/M3Button';
+import { Server, ShieldCheck, Radio, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 interface AddEditDeviceModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
   onClose,
   deviceToEdit,
 }) => {
-  const { locations, addDevice, updateDevice } = useNms();
+  const { locations, addDevice, updateDevice, testSnmpConnection } = useNms();
 
   const [name, setName] = useState('');
   const [type, setType] = useState<DeviceType>('router');
@@ -33,6 +34,9 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
   const [v3User, setV3User] = useState('');
   const [v3AuthKey, setV3AuthKey] = useState('');
   const [v3PrivKey, setV3PrivKey] = useState('');
+
+  const [testingSnmp, setTestingSnmp] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
 
   useEffect(() => {
     if (deviceToEdit) {
@@ -64,7 +68,53 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       setV3AuthKey('');
       setV3PrivKey('');
     }
+    setTestResult(null);
   }, [deviceToEdit, locations]);
+
+  const handleTestSnmp = async () => {
+    if (!ipAddress) {
+      setTestResult({ success: false, message: 'Alamat IP wajib diisi terlebih dahulu' });
+      return;
+    }
+
+    setTestingSnmp(true);
+    setTestResult(null);
+
+    try {
+      const res = await testSnmpConnection({
+        ipAddress,
+        version: snmpVersion,
+        community: snmpCommunity,
+        snmpV3:
+          snmpVersion === 'v3'
+            ? {
+                username: v3User,
+                auth_protocol: 'SHA',
+                auth_key: v3AuthKey,
+                privacy_protocol: 'AES',
+                privacy_key: v3PrivKey,
+              }
+            : undefined,
+      });
+
+      if (res.success) {
+        setTestResult({
+          success: true,
+          message: (res as any).message || 'SNMP Berhasil Terhubung!',
+          latency: res.data?.latencyMs,
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: res.error || 'SNMP Port 161 tidak merespon.',
+        });
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, message: err.message || 'Gagal menguji koneksi SNMP' });
+    } finally {
+      setTestingSnmp(false);
+    }
+  };
 
   const handleSubmit = () => {
     if (!name || !ipAddress) return;
@@ -147,35 +197,34 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-m3-on-surface-variant px-1 block mb-1.5">
-              Jenis / Tipe Perangkat
+            <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider mb-1.5">
+              Tipe Node Jaringan
             </label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as DeviceType)}
-              className="w-full h-12 rounded-m3-md border border-m3-outline-variant bg-m3-surface-container-lowest px-3 text-sm text-m3-on-surface focus:ring-2 focus:ring-m3-primary outline-none"
+              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-none focus:border-m3-primary"
             >
-              <option value="router">Router Gateway</option>
-              <option value="switch">Switch / Hub</option>
-              <option value="access_point">Access Point (WiFi)</option>
-              <option value="server">Server & Storage</option>
-              <option value="firewall">Firewall / Security</option>
+              <option value="router">Router / Gateway</option>
+              <option value="switch">Switch Distribution / Core</option>
+              <option value="access_point">Wireless Access Point</option>
+              <option value="server">Physical / VM Server</option>
+              <option value="firewall">Hardware Firewall</option>
             </select>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-m3-on-surface-variant px-1 block mb-1.5">
-              Lokasi Penempatan
+            <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider mb-1.5">
+              Lokasi / Gedung
             </label>
             <select
               value={locationId}
               onChange={(e) => setLocationId(e.target.value)}
-              className="w-full h-12 rounded-m3-md border border-m3-outline-variant bg-m3-surface-container-lowest px-3 text-sm text-m3-on-surface focus:ring-2 focus:ring-m3-primary outline-none"
+              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-none focus:border-m3-primary"
             >
-              <option value="">-- Tanpa Lokasi Spesifik --</option>
               {locations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
-                  {loc.name} ({loc.building})
+                  {loc.name} ({loc.building} - {loc.floor})
                 </option>
               ))}
             </select>
@@ -212,11 +261,23 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
           />
         </div>
 
-        {/* SNMP Settings Accordion Box */}
+        {/* SNMP Settings Box */}
         <div className="p-4 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/40 space-y-3">
-          <div className="flex items-center gap-2 font-bold text-xs text-m3-on-surface uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-m3-primary" />
-            <span>Konfigurasi Protokol SNMP</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-bold text-xs text-m3-on-surface uppercase tracking-wider">
+              <ShieldCheck className="w-4 h-4 text-m3-primary" />
+              <span>Konfigurasi Protokol SNMP</span>
+            </div>
+
+            <M3Button
+              size="sm"
+              variant="outlined"
+              loading={testingSnmp}
+              onClick={handleTestSnmp}
+              icon={<Radio className="w-3.5 h-3.5" />}
+            >
+              Uji Polling SNMP
+            </M3Button>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-semibold text-m3-on-surface">
@@ -270,6 +331,31 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
                 value={v3PrivKey}
                 onChange={(e) => setV3PrivKey(e.target.value)}
               />
+            </div>
+          )}
+
+          {/* Test SNMP result alert */}
+          {testResult && (
+            <div
+              className={`p-3 rounded-m3-xl border text-xs font-medium flex items-start gap-2 animate-in fade-in ${
+                testResult.success
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300'
+              }`}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <span className="font-bold">{testResult.message}</span>
+                {testResult.latency && (
+                  <span className="block text-[10px] font-mono opacity-80 mt-0.5">
+                    Latensi Respon UDP: {testResult.latency} ms
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -31,6 +31,8 @@ export const nmsApi = {
   updateDevice: (id: string, data: any) => fetchApi(`/api/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDevice: (id: string) => fetchApi(`/api/devices/${id}`, { method: 'DELETE' }),
   pingDevice: (id: string) => fetchApi(`/api/devices/${id}/ping`, { method: 'POST' }),
+  syncDeviceSnmp: (id: string, data?: any) => fetchApi(`/api/devices/${id}/snmp-sync`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  testSnmp: (data: any) => fetchApi('/api/devices/snmp-test', { method: 'POST', body: JSON.stringify(data) }),
 
   getLocations: () => fetchApi('/api/locations'),
   createLocation: (data: any) => fetchApi('/api/locations', { method: 'POST', body: JSON.stringify(data) }),
@@ -60,6 +62,9 @@ export const nmsApi = {
 
   getQueues: (deviceId?: string) => fetchApi(`/api/queues${deviceId ? `?deviceId=${deviceId}` : ''}`),
   createQueue: (data: any) => fetchApi('/api/queues', { method: 'POST', body: JSON.stringify(data) }),
+
+  getInterfaces: (deviceId?: string) => fetchApi(`/api/interfaces${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  createInterface: (data: any) => fetchApi('/api/interfaces', { method: 'POST', body: JSON.stringify(data) }),
 
   getUsers: () => fetchApi('/api/users'),
   createUser: (data: any) => fetchApi('/api/users', { method: 'POST', body: JSON.stringify(data) }),

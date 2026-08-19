@@ -41,6 +41,7 @@ import {
   initialAiSimulationMetrics,
   initialDashboardWidgets,
   initialAiConfig,
+  generateDefaultInterfaces,
 } from './mock-data';
 import { nmsApi } from './api-client';
 
@@ -59,6 +60,11 @@ interface NmsContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   switchUserRole: (role: UserRole) => void;
+  isAuthenticated: boolean;
+  isAuthLoading: boolean;
+  login: (user: User) => void;
+  loginAs: (role: UserRole, email?: string) => void;
+  logout: () => void;
 
   // Data State
   locations: Location[];
@@ -129,12 +135,16 @@ interface NmsContextType {
   applyLanRouteRecommendation: (routeId: string) => void;
   toggleDashboardWidget: (key: keyof DashboardWidgetVisibility) => void;
   updateAiConfig: (updates: Partial<AiConfig>) => void;
-  testAiConnection: () => Promise<{ success: boolean; latency: number; message: string }>;
+  testAiConnection: (customConfig?: Partial<AiConfig>) => Promise<{ success: boolean; latency: number; message: string }>;
 
   addAuditLog: (action: string, details: string) => void;
   pingDevice: (ip: string) => Promise<{ latency: number; loss: number; success: boolean; packets: number[] }>;
   syncQueues: (deviceId?: string) => Promise<void>;
   addQueue: (queue: any) => void;
+  syncInterfaces: (deviceId?: string) => Promise<void>;
+  addInterface: (iface: any) => void;
+  syncDeviceViaSnmp: (deviceId: string) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
+  testSnmpConnection: (config: any) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
 }
 
 const NmsContext = createContext<NmsContextType | null>(null);
@@ -154,10 +164,25 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+
   // Entities state - Clean initial states (connected to PostgreSQL)
   const [locations, setLocations] = useState<Location[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [interfaces, setInterfaces] = useState<DeviceInterface[]>([]);
+  const [interfaces, setInterfaces] = useState<DeviceInterface[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nms_interfaces');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return initialInterfaces;
+  });
   const [queues, setQueues] = useState<QueueTraffic[]>([]);
   const [vpnTunnels, setVpnTunnels] = useState<VpnTunnel[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -177,9 +202,46 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [deviceOptimizationPlans, setDeviceOptimizationPlans] = useState<DeviceOptimizationPlan[]>([]);
   const [aiSimulation, setAiSimulation] = useState<AiSimulationMetrics>(initialAiSimulationMetrics);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetVisibility>(initialDashboardWidgets);
-  const [aiConfig, setAiConfig] = useState<AiConfig>(initialAiConfig);
+  const [aiConfig, setAiConfig] = useState<AiConfig>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nms_ai_config');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { ...initialAiConfig, ...parsed };
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    return initialAiConfig;
+  });
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [aiScanProgress, setAiScanProgress] = useState(0);
+
+  // Check auth session on client mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedUser = localStorage.getItem('nms_auth_user');
+        const hasSessionCookie = document.cookie.includes('nms_auth_session=1');
+        if (savedUser && hasSessionCookie) {
+          const parsed = JSON.parse(savedUser);
+          setCurrentUser(parsed);
+          setIsAuthenticated(true);
+        } else if (hasSessionCookie) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.warn('Failed to parse auth user session:', err);
+        setIsAuthenticated(false);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    }
+  }, []);
 
   // Realtime throughput chart history (Starts clean at 0 Mbps)
   const [throughputHistory, setThroughputHistory] = useState<ThroughputPoint[]>(() => {
@@ -213,6 +275,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           optimizerRes,
           alertRulesRes,
           queuesRes,
+          interfacesRes,
         ] = await Promise.allSettled([
           nmsApi.getDevices(),
           nmsApi.getLocations(),
@@ -225,9 +288,12 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nmsApi.getOptimizerData(),
           nmsApi.getAlertRules(),
           nmsApi.getQueues(),
+          nmsApi.getInterfaces(),
         ]);
 
+        let loadedDevices: Device[] = [];
         if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
+          loadedDevices = devicesRes.value;
           setDevices(devicesRes.value);
         }
         if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value)) {
@@ -251,9 +317,32 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
           setQueues(queuesRes.value);
         }
+        if (interfacesRes.status === 'fulfilled' && Array.isArray(interfacesRes.value) && interfacesRes.value.length > 0) {
+          setInterfaces(interfacesRes.value);
+        } else if (loadedDevices.length > 0) {
+          // Ensure all devices have interfaces generated
+          setInterfaces(prev => {
+            let combined = [...prev];
+            for (const dev of loadedDevices) {
+              const hasIfaces = combined.some(i => i.device_id === dev.id);
+              if (!hasIfaces) {
+                const autoGen = generateDefaultInterfaces(dev.id, dev.type, dev.mac_address, dev.name);
+                combined = [...combined, ...autoGen];
+              }
+            }
+            if (typeof window !== 'undefined') {
+              try { localStorage.setItem('nms_interfaces', JSON.stringify(combined)); } catch {}
+            }
+            return combined;
+          });
+        }
         if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
           setUsers(usersRes.value);
-          setCurrentUser(usersRes.value[0]);
+          // Only update currentUser if not already set from session
+          const savedUser = typeof window !== 'undefined' ? localStorage.getItem('nms_auth_user') : null;
+          if (!savedUser) {
+            setCurrentUser(usersRes.value[0]);
+          }
         }
         if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
           setAuditLogs(logsRes.value);
@@ -266,7 +355,24 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (opt.anomalies) setAiAnomalies(opt.anomalies);
           if (opt.lanRoutes) setLanRoutes(opt.lanRoutes);
           if (opt.optimizationPlans) setDeviceOptimizationPlans(opt.optimizationPlans);
-          if (opt.config) setAiConfig(opt.config);
+          if (opt.config) {
+            setAiConfig(prev => {
+              let localSaved: any = null;
+              if (typeof window !== 'undefined') {
+                try {
+                  const s = localStorage.getItem('nms_ai_config');
+                  if (s) localSaved = JSON.parse(s);
+                } catch {
+                  // Ignore
+                }
+              }
+              const merged = { ...initialAiConfig, ...opt.config, ...(localSaved || {}) };
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('nms_ai_config', JSON.stringify(merged));
+              }
+              return merged;
+            });
+          }
         }
       } catch (err) {
         console.warn('API sync fallback to clean initial state:', err);
@@ -289,9 +395,54 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
+  const login = useCallback((userToLogin: User) => {
+    setCurrentUser(userToLogin);
+    setIsAuthenticated(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nms_auth_user', JSON.stringify(userToLogin));
+      document.cookie = 'nms_auth_session=1; path=/; max-age=604800; SameSite=Lax';
+    }
+  }, []);
+
+  const loginAs = useCallback((role: UserRole, email?: string) => {
+    let target = users.find(u => u.role === role);
+    if (!target) {
+      target = {
+        id: role === 'admin' ? 'usr-admin' : 'usr-petugas',
+        name: role === 'admin' ? 'Budi Santoso, S.Kom' : 'Dimas Prakoso',
+        email: email || (role === 'admin' ? 'admin@kantor.go.id' : 'dimas@kantor.go.id'),
+        role,
+        status: 'active',
+        last_login: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+    }
+    login(target);
+  }, [users, login]);
+
+  const logout = useCallback(() => {
+    setIsAuthenticated(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('nms_auth_user');
+      document.cookie = 'nms_auth_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      document.cookie = 'better-auth.session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    }
+  }, []);
+
   const switchUserRole = useCallback((role: UserRole) => {
-    const target = users.find(u => u.role === role) || users[0];
+    const target = users.find(u => u.role === role) || {
+      id: role === 'admin' ? 'usr-admin' : 'usr-petugas',
+      name: role === 'admin' ? 'Budi Santoso, S.Kom' : 'Dimas Prakoso',
+      email: role === 'admin' ? 'admin@kantor.go.id' : 'dimas@kantor.go.id',
+      role,
+      status: 'active',
+      last_login: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
     setCurrentUser(target);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nms_auth_user', JSON.stringify(target));
+    }
   }, [users]);
 
   const addAuditLog = useCallback((action: string, details: string) => {
@@ -366,12 +517,169 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         });
       });
+
+      // Fluctuate live interfaces RX/TX rate slightly for online devices
+      setInterfaces(prevIfaces => {
+        if (prevIfaces.length === 0) return prevIfaces;
+        return prevIfaces.map(iface => {
+          if (iface.status === 'down') return iface;
+          const rxJitter = (Math.random() - 0.5) * 4;
+          const txJitter = (Math.random() - 0.5) * 2;
+          const newRx = Math.max(0.1, Number((iface.rx_rate + rxJitter).toFixed(1)));
+          const newTx = Math.max(0.1, Number((iface.tx_rate + txJitter).toFixed(1)));
+          return {
+            ...iface,
+            rx_rate: newRx,
+            tx_rate: newTx,
+            rx_bytes: iface.rx_bytes + Math.round(newRx * 125000),
+            tx_bytes: iface.tx_bytes + Math.round(newTx * 125000),
+          };
+        });
+      });
     }, 4000);
 
     return () => clearInterval(interval);
   }, []);
 
   // Actions
+  const syncInterfaces = useCallback(async (deviceId?: string) => {
+    try {
+      const res: any = await nmsApi.getInterfaces(deviceId);
+      const list = Array.isArray(res) ? res : (res?.data || []);
+      if (list.length > 0) {
+        setInterfaces(prev => {
+          const others = deviceId ? prev.filter(i => i.device_id !== deviceId) : [];
+          const merged = [...others, ...list];
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('nms_interfaces', JSON.stringify(merged)); } catch {}
+          }
+          return merged;
+        });
+      }
+      addAuditLog('SYNC_INTERFACES', 'Menyinkronkan daftar port interface dari perangkat');
+    } catch (err) {
+      console.warn('Failed to sync interfaces:', err);
+    }
+  }, [addAuditLog]);
+
+  const addInterface = useCallback((ifaceData: any) => {
+    const created: DeviceInterface = {
+      id: ifaceData.id || `if-${Date.now()}`,
+      device_id: ifaceData.device_id || (devices[0]?.id || 'dev-1'),
+      name: ifaceData.name || 'ether-port',
+      type: ifaceData.type || 'ethernet',
+      status: ifaceData.status || 'up',
+      mac_address: ifaceData.mac_address || '00:00:00:00:00:00',
+      speed: ifaceData.speed || '1 Gbps',
+      rx_rate: ifaceData.rx_rate || 10.0,
+      tx_rate: ifaceData.tx_rate || 5.0,
+      rx_bytes: ifaceData.rx_bytes || 1000000,
+      tx_bytes: ifaceData.tx_bytes || 500000,
+      error_rate: ifaceData.error_rate || 0,
+    };
+    setInterfaces(prev => {
+      const updated = [...prev, created];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_interfaces', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    nmsApi.createInterface(created).catch(e => console.warn('Failed to persist createInterface:', e));
+    addAuditLog('ADD_INTERFACE', `Menambahkan interface baru: ${created.name}`);
+  }, [devices, addAuditLog]);
+
+  const syncDeviceViaSnmp = useCallback(async (deviceId: string) => {
+    try {
+      const dev = devices.find(d => d.id === deviceId);
+      const res: any = await nmsApi.syncDeviceSnmp(deviceId, dev ? {
+        ip_address: dev.ip_address,
+        snmp_version: dev.snmp_version,
+        snmp_community: dev.snmp_community,
+        snmp_v3: dev.snmp_v3,
+      } : {});
+
+      if (res && res.success && res.data) {
+        const { system, interfaces: realInterfaces, queues: realQueues, latencyMs } = res.data;
+
+        // 1. Update device in state
+        if (system) {
+          setDevices(prev =>
+            prev.map(d =>
+              d.id === deviceId
+                ? {
+                    ...d,
+                    cpu_usage: system.cpuUsage,
+                    ram_usage: system.ramUsage,
+                    storage_usage: system.storageUsage,
+                    temperature: system.temperature,
+                    uptime: system.sysUpTime,
+                    voltage: system.voltage,
+                    latency: latencyMs || d.latency,
+                    status: 'online',
+                    last_seen: new Date().toISOString(),
+                  }
+                : d
+            )
+          );
+        }
+
+        // 2. Update interfaces in state
+        if (Array.isArray(realInterfaces) && realInterfaces.length > 0) {
+          setInterfaces(prev => {
+            const others = prev.filter(i => i.device_id !== deviceId);
+            const merged = [...others, ...realInterfaces];
+            if (typeof window !== 'undefined') {
+              try { localStorage.setItem('nms_interfaces', JSON.stringify(merged)); } catch {}
+            }
+            return merged;
+          });
+        }
+
+        // 3. Update queues if any
+        if (Array.isArray(realQueues) && realQueues.length > 0) {
+          setQueues(prev => {
+            const others = prev.filter(q => q.device_id !== deviceId);
+            return [...others, ...realQueues];
+          });
+        }
+
+        addAuditLog(
+          'SNMP_SYNC_SUCCESS',
+          `Berhasil membaca metrik asli MikroTik via SNMP (${dev?.name || deviceId} - ${latencyMs} ms)`
+        );
+
+        return { success: true, data: res.data };
+      }
+
+      addAuditLog(
+        'SNMP_SYNC_FAILED',
+        `Gagal membaca SNMP untuk ${dev?.name || deviceId}: ${res?.error || 'Port 161 Timeout'}`
+      );
+
+      return {
+        success: false,
+        error: res?.error || 'SNMP Port 161 tidak merespon.',
+        cliHelp: res?.cliHelp,
+        data: res?.data,
+      };
+    } catch (err: any) {
+      console.warn('SNMP sync error:', err);
+      return {
+        success: false,
+        error: err.message || 'Terjadi kesalahan saat mengeksekusi polling SNMP',
+      };
+    }
+  }, [devices, addAuditLog]);
+
+  const testSnmpConnection = useCallback(async (config: any) => {
+    try {
+      const res: any = await nmsApi.testSnmp(config);
+      return res;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Gagal terhubung ke SNMP port 161' };
+    }
+  }, []);
+
   const syncQueues = useCallback(async (deviceId?: string) => {
     try {
       const res: any = await nmsApi.getQueues(deviceId);
@@ -412,11 +720,23 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       location_name: loc ? loc.name : 'Unknown Location',
     };
     setDevices(prev => [...prev, created]);
+
+    // Automatically generate and register default interface ports for the new device
+    const newIfaces = generateDefaultInterfaces(created.id, created.type, created.mac_address, created.name);
+    setInterfaces(prev => {
+      const updated = [...prev, ...newIfaces];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_interfaces', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+
     addAuditLog('ADD_DEVICE', `Menambahkan perangkat baru: ${created.name} (${created.ip_address})`);
     nmsApi.createDevice(created).then(() => {
       syncQueues(created.id);
+      syncInterfaces(created.id);
     }).catch(e => console.warn('Failed to sync createDevice:', e));
-  }, [locations, addAuditLog, syncQueues]);
+  }, [locations, addAuditLog, syncQueues, syncInterfaces]);
 
   const updateDevice = useCallback((id: string, updates: Partial<Device>) => {
     setDevices(prev =>
@@ -726,49 +1046,77 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const updateAiConfig = useCallback((updates: Partial<AiConfig>) => {
-    setAiConfig(prev => ({
-      ...prev,
-      ...updates,
-    }));
+    setAiConfig(prev => {
+      const next = { ...prev, ...updates };
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('nms_ai_config', JSON.stringify(next));
+        } catch {
+          // Ignore
+        }
+      }
+      return next;
+    });
     addAuditLog('UPDATE_AI_CONFIG', 'Memperbarui parameter konfigurasi & API Key AI Engine');
     nmsApi.updateAiConfig(updates).catch(e => console.warn('Failed to sync updateAiConfig:', e));
   }, [addAuditLog]);
 
-  const testAiConnection = useCallback(async () => {
-    // Simulate AI API Handshake or call API
-    const isLocal = aiConfig.provider === 'local_ollama';
-    const hasKey = !!aiConfig.api_key.trim();
+  const testAiConnection = useCallback(async (customConfig?: Partial<AiConfig>) => {
+    const activeConfig = { ...aiConfig, ...customConfig };
+    const isLocal = activeConfig.provider === 'local_ollama';
+    const hasKey = !!activeConfig.api_key?.trim();
 
     if (!isLocal && !hasKey) {
-      setAiConfig(prev => ({
-        ...prev,
-        connection_status: 'error',
-        last_tested_at: new Date().toISOString(),
-      }));
+      setAiConfig(prev => {
+        const next = {
+          ...prev,
+          ...customConfig,
+          connection_status: 'error' as const,
+          last_tested_at: new Date().toISOString(),
+        };
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('nms_ai_config', JSON.stringify(next));
+          } catch {}
+        }
+        return next;
+      });
       return { success: false, latency: 0, message: 'API Key tidak boleh kosong!' };
     }
 
     try {
-      const res = await nmsApi.updateAiConfig(aiConfig);
+      const res = await nmsApi.updateAiConfig(activeConfig);
       const latency = res?.responseTimeMs || Math.floor(180 + Math.random() * 80);
-      setAiConfig(prev => ({
-        ...prev,
+      const updatedConfig: AiConfig = {
+        ...activeConfig,
         connection_status: 'connected',
         last_tested_at: new Date().toISOString(),
         response_time_ms: latency,
-      }));
-      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${aiConfig.model} berhasil (${latency}ms)`);
-      return { success: true, latency, message: `Terhubung ke ${aiConfig.model} (${latency}ms)` };
+      };
+      setAiConfig(updatedConfig);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('nms_ai_config', JSON.stringify(updatedConfig));
+        } catch {}
+      }
+      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${activeConfig.model} berhasil (${latency}ms)`);
+      return { success: true, latency, message: `Terhubung ke ${activeConfig.model} (${latency}ms)` };
     } catch {
       const latency = Math.floor(180 + Math.random() * 80);
-      setAiConfig(prev => ({
-        ...prev,
+      const updatedConfig: AiConfig = {
+        ...activeConfig,
         connection_status: 'connected',
         last_tested_at: new Date().toISOString(),
         response_time_ms: latency,
-      }));
-      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${aiConfig.model} berhasil (${latency}ms)`);
-      return { success: true, latency, message: `Terhubung ke ${aiConfig.model} (${latency}ms)` };
+      };
+      setAiConfig(updatedConfig);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('nms_ai_config', JSON.stringify(updatedConfig));
+        } catch {}
+      }
+      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${activeConfig.model} berhasil (${latency}ms)`);
+      return { success: true, latency, message: `Terhubung ke ${activeConfig.model} (${latency}ms)` };
     }
   }, [aiConfig, addAuditLog]);
 
@@ -789,6 +1137,11 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUser,
     setCurrentUser,
     switchUserRole,
+    isAuthenticated,
+    isAuthLoading,
+    login,
+    loginAs,
+    logout,
     locations,
     devices,
     interfaces,
@@ -849,6 +1202,10 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pingDevice,
     syncQueues,
     addQueue,
+    syncInterfaces,
+    addInterface,
+    syncDeviceViaSnmp,
+    testSnmpConnection,
   };
 
   return <NmsContext.Provider value={value}>{children}</NmsContext.Provider>;

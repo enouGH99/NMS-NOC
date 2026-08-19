@@ -43,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
     setSoundEnabled,
     currentUser,
     switchUserRole,
+    logout,
     liveStats,
     throughputHistory,
     alerts,
@@ -57,13 +58,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
 
   const handleLogout = async () => {
     setProfileMenuOpen(false);
+    logout();
     try {
       await authClient.signOut();
     } catch {
       // Ignore
     }
     addAuditLog('LOGOUT', `Pengguna ${currentUser.name} keluar dari sistem`);
-    router.push('/login');
+    router.replace('/login');
   };
 
   const activeAlerts = alerts.filter((a) => !a.resolved_at);

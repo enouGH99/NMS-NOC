@@ -109,7 +109,18 @@ export const AiSetupConfigCard: React.FC = () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await testAiConnection();
+      const res = await testAiConnection({
+        provider,
+        model,
+        api_key: apiKey,
+        custom_endpoint: customEndpoint,
+        temperature,
+        max_tokens: maxTokens,
+        auto_scan_enabled: autoScanEnabled,
+        auto_scan_interval_minutes: autoScanInterval,
+        auto_generate_scripts: autoGenerateScripts,
+        notify_on_anomaly: notifyOnAnomaly,
+      });
       setTestResult(res);
     } finally {
       setTesting(false);
@@ -130,7 +141,7 @@ export const AiSetupConfigCard: React.FC = () => {
       notify_on_anomaly: notifyOnAnomaly,
     });
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    setTimeout(() => setSavedSuccess(false), 3500);
   };
 
   return (

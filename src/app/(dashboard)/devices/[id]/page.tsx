@@ -11,6 +11,7 @@ import { M3Tabs } from '@/components/m3/M3Tabs';
 import { PingTestModal } from '@/components/devices/PingTestModal';
 import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { AddEditDeviceModal } from '@/components/devices/AddEditDeviceModal';
+import { SnmpSyncModal } from '@/components/devices/SnmpSyncModal';
 import {
   Server,
   ArrowLeft,
@@ -29,13 +30,21 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   CheckCircle2,
+  RefreshCw,
+  Radio,
 } from 'lucide-react';
 import { formatBytes, formatMbps, formatDate } from '@/lib/utils';
+
+import {
+  generateDefaultInterfaces,
+  initialQueues,
+  initialVpnTunnels,
+} from '@/lib/mock-data';
 
 export default function DeviceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { devices, interfaces, queues, vpnTunnels, repairRecords } = useNms();
+  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces } = useNms();
 
   const deviceId = params.id as string;
   const device = devices.find((d) => d.id === deviceId);
@@ -44,6 +53,8 @@ export default function DeviceDetailPage() {
   const [pingModalOpen, setPingModalOpen] = useState(false);
   const [repairModalOpen, setRepairModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [snmpModalOpen, setSnmpModalOpen] = useState(false);
+  const [isScanningInterfaces, setIsScanningInterfaces] = useState(false);
 
   if (!device) {
     return (
@@ -58,43 +69,77 @@ export default function DeviceDetailPage() {
   }
 
   const statusBadge = getStatusM3Badge(device.status);
-  const deviceInterfaces = interfaces.filter((i) => i.device_id === device.id || device.id === 'dev-1');
-  const deviceQueues = queues.filter((q) => q.device_id === device.id || device.id === 'dev-1');
-  const deviceVpns = vpnTunnels.filter((v) => v.device_id === device.id || device.id === 'dev-1');
+
+  // Resolve device interfaces (with auto-generator fallback)
+  let deviceInterfaces = interfaces.filter((i) => i.device_id === device.id);
+  if (deviceInterfaces.length === 0) {
+    deviceInterfaces = generateDefaultInterfaces(device.id, device.type, device.mac_address, device.name);
+  }
+
+  // Resolve device queues
+  let deviceQueues = queues.filter((q) => q.device_id === device.id);
+  if (deviceQueues.length === 0 && device.type === 'router') {
+    deviceQueues = initialQueues.map((q) => ({ ...q, id: `q-${device.id}-${q.id}`, device_id: device.id }));
+  }
+
+  // Resolve device VPNs
+  let deviceVpns = vpnTunnels.filter((v) => v.device_id === device.id);
+  if (deviceVpns.length === 0 && device.type === 'router') {
+    deviceVpns = initialVpnTunnels.map((v) => ({ ...v, id: `vpn-${device.id}-${v.id}`, device_id: device.id }));
+  }
+
   const deviceRepairs = repairRecords.filter((r) => r.device_id === device.id);
+
+  const handleScanInterfaces = async () => {
+    setSnmpModalOpen(true);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Top Header Card */}
       <div className="bg-m3-surface-container-low p-6 rounded-m3-3xl border border-m3-outline-variant/30 space-y-4">
-        <div className="flex items-center gap-3">
-          <Link href="/devices">
-            <button className="p-2 rounded-full hover:bg-m3-surface-container-highest text-m3-on-surface-variant transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          </Link>
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-m3-on-surface">
-                {device.name}
-              </h1>
-              <span
-                className={`px-3 py-0.5 rounded-full text-xs font-bold ${statusBadge.bg} ${statusBadge.text}`}
-              >
-                {statusBadge.label}
-              </span>
-              {device.is_priority && (
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold">
-                  ⭐ Prioritas Kritis
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link href="/devices">
+              <button className="p-2 rounded-full hover:bg-m3-surface-container-highest text-m3-on-surface-variant transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            </Link>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-extrabold text-m3-on-surface">
+                  {device.name}
+                </h1>
+                <span
+                  className={`px-3 py-0.5 rounded-full text-xs font-bold ${statusBadge.bg} ${statusBadge.text}`}
+                >
+                  {statusBadge.label}
                 </span>
-              )}
+                {device.is_priority && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold">
+                    ⭐ Prioritas Kritis
+                  </span>
+                )}
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[11px] font-mono font-bold flex items-center gap-1">
+                  <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
+                  SNMP {device.snmp_version.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-m3-on-surface-variant mt-1 font-mono">
+                {device.ip_address} • MAC: {device.mac_address} • Model: {device.model} • Lokasi: {device.location_name}
+              </p>
             </div>
-            <p className="text-xs sm:text-sm text-m3-on-surface-variant mt-1 font-mono">
-              {device.ip_address} • MAC: {device.mac_address} • Model: {device.model} • Lokasi: {device.location_name}
-            </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <M3Button
+              size="sm"
+              variant="filled"
+              onClick={() => setSnmpModalOpen(true)}
+              icon={<Radio className="w-4 h-4" />}
+            >
+              Tarik Data Realtime (SNMP)
+            </M3Button>
             <M3Button
               size="sm"
               variant="filled-tonal"
@@ -105,7 +150,7 @@ export default function DeviceDetailPage() {
             </M3Button>
             <M3Button
               size="sm"
-              variant="filled"
+              variant="outlined"
               onClick={() => setRepairModalOpen(true)}
               icon={<Wrench className="w-4 h-4" />}
             >
@@ -226,9 +271,25 @@ export default function DeviceDetailPage() {
       {/* Tab 2: Interfaces */}
       {activeTab === 'interfaces' && (
         <M3Card className="p-4 sm:p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-4 animate-in fade-in">
-          <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
-            Daftar Port Ethernet & SFP Interface
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-m3-outline-variant/20">
+            <div>
+              <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
+                Daftar Port Ethernet & SFP Interface
+              </h3>
+              <p className="text-xs text-m3-on-surface-variant mt-0.5">
+                Monitoring live status link, bandwidth throughput (RX/TX), dan error rate per port
+              </p>
+            </div>
+            <M3Button
+              size="sm"
+              variant="outlined"
+              loading={isScanningInterfaces}
+              onClick={handleScanInterfaces}
+              icon={<RefreshCw className="w-4 h-4" />}
+            >
+              {isScanningInterfaces ? 'Memindai SNMP...' : 'Pindai Port Interface (SNMP)'}
+            </M3Button>
+          </div>
 
           {/* Mobile Cards for Interfaces */}
           <div className="space-y-3 block md:hidden">
@@ -449,6 +510,11 @@ export default function DeviceDetailPage() {
       )}
 
       {/* Modals */}
+      <SnmpSyncModal
+        isOpen={snmpModalOpen}
+        onClose={() => setSnmpModalOpen(false)}
+        device={device}
+      />
       <PingTestModal
         isOpen={pingModalOpen}
         onClose={() => setPingModalOpen(false)}

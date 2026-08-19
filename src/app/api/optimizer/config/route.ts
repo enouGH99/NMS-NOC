@@ -12,6 +12,11 @@ const normalizeProvider = (p?: string) => {
   return 'google_gemini';
 };
 
+// Global in-memory persistence fallback across requests/hot-reloads
+declare global {
+  var __nmsAiConfig: any;
+}
+
 export async function GET() {
   try {
     let config: any = null;
@@ -19,7 +24,11 @@ export async function GET() {
       const rows = await db.select().from(aiConfigs);
       if (rows.length > 0) config = rows[0];
     } catch {
-      // Fallback
+      // Fallback to in-memory if DB fails
+    }
+
+    if (!config && global.__nmsAiConfig) {
+      config = global.__nmsAiConfig;
     }
 
     const mappedConfig = config
@@ -29,13 +38,13 @@ export async function GET() {
           api_key: config.apiKey || config.api_key || '',
           custom_endpoint: config.customEndpoint || config.custom_endpoint || '',
           temperature: config.temperature !== undefined ? Number(config.temperature) : 0.2,
-          max_tokens: config.maxTokens !== undefined ? Number(config.maxTokens) : 4096,
-          auto_scan_enabled: config.autoScanEnabled !== undefined ? Boolean(config.autoScanEnabled) : true,
-          auto_scan_interval_minutes: config.autoScanIntervalMinutes !== undefined ? Number(config.autoScanIntervalMinutes) : 15,
-          auto_generate_scripts: config.autoGenerateScripts !== undefined ? Boolean(config.autoGenerateScripts) : true,
-          notify_on_anomaly: config.notifyOnAnomaly !== undefined ? Boolean(config.notifyOnAnomaly) : true,
+          max_tokens: config.maxTokens !== undefined ? Number(config.maxTokens) : (config.max_tokens || 4096),
+          auto_scan_enabled: config.autoScanEnabled !== undefined ? Boolean(config.autoScanEnabled) : (config.auto_scan_enabled ?? true),
+          auto_scan_interval_minutes: config.autoScanIntervalMinutes !== undefined ? Number(config.autoScanIntervalMinutes) : (config.auto_scan_interval_minutes || 15),
+          auto_generate_scripts: config.autoGenerateScripts !== undefined ? Boolean(config.autoGenerateScripts) : (config.auto_generate_scripts ?? true),
+          notify_on_anomaly: config.notifyOnAnomaly !== undefined ? Boolean(config.notifyOnAnomaly) : (config.notify_on_anomaly ?? true),
           connection_status: config.connectionStatus || config.connection_status || 'connected',
-          last_tested_at: config.lastTestedAt ? new Date(config.lastTestedAt).toISOString() : undefined,
+          last_tested_at: config.lastTestedAt ? new Date(config.lastTestedAt).toISOString() : (config.last_tested_at || undefined),
           response_time_ms: config.responseTimeMs || config.response_time_ms || 240,
         }
       : initialAiConfig;
@@ -107,6 +116,9 @@ export async function PUT(request: NextRequest) {
       last_tested_at: updated.lastTestedAt.toISOString(),
       response_time_ms: latency,
     };
+
+    // Store in global server memory
+    global.__nmsAiConfig = resData;
 
     return NextResponse.json({
       success: true,

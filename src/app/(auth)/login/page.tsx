@@ -21,12 +21,19 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { switchUserRole, addAuditLog } = useNms();
+  const { loginAs, isAuthenticated, isAuthLoading, addAuditLog } = useNms();
 
   const [email, setEmail] = useState('admin@kantor.go.id');
   const [password, setPassword] = useState('password123');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // If already authenticated, direct immediately to dashboard
+  React.useEffect(() => {
+    if (!isAuthLoading && isAuthenticated) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, isAuthLoading, router]);
 
   const handleBetterAuthLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -40,15 +47,13 @@ export default function LoginPage() {
         password,
       });
 
-      if (res.error) {
-        // If credentials are not seeded or offline in local dev, fallback gracefully to role switcher
+      const role = email.includes('admin') ? 'admin' : 'petugas';
+      loginAs(role, email);
+
+      if (res?.error) {
         console.warn('Better Auth signIn response:', res.error);
-        const role = email.includes('admin') ? 'admin' : 'petugas';
-        switchUserRole(role);
         addAuditLog('LOGIN', `Pengguna masuk ke sistem sebagai ${role.toUpperCase()}`);
       } else {
-        const role = email.includes('admin') ? 'admin' : 'petugas';
-        switchUserRole(role);
         addAuditLog('LOGIN', `Pengguna (${email}) berhasil login via Better Auth`);
       }
 
@@ -56,7 +61,7 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error('Login error:', err);
       const role = email.includes('admin') ? 'admin' : 'petugas';
-      switchUserRole(role);
+      loginAs(role, email);
       addAuditLog('LOGIN', `Pengguna masuk ke sistem sebagai ${role.toUpperCase()}`);
       router.push('/');
     } finally {
@@ -72,7 +77,7 @@ export default function LoginPage() {
     setPassword('password123');
 
     setTimeout(() => {
-      switchUserRole(role);
+      loginAs(role, demoEmail);
       addAuditLog('LOGIN', `Pengguna masuk ke sistem sebagai ${role.toUpperCase()} (Demo Mode)`);
       setLoading(false);
       router.push('/');

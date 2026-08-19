@@ -26,6 +26,10 @@ export async function GET() {
       // Fallback
     }
 
+    if (!config && global.__nmsAiConfig) {
+      config = global.__nmsAiConfig;
+    }
+
     const normalizeProvider = (p?: string) => {
       if (p === 'gemini' || p === 'google' || p === 'google_gemini') return 'google_gemini';
       if (p === 'openai' || p === 'chatgpt') return 'openai';
