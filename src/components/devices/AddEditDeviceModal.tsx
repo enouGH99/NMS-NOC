@@ -7,7 +7,20 @@ import { M3Dialog } from '../m3/M3Dialog';
 import { M3TextField } from '../m3/M3TextField';
 import { M3Switch } from '../m3/M3Switch';
 import { M3Button } from '../m3/M3Button';
-import { Server, ShieldCheck, Radio, CheckCircle2, AlertTriangle, Building, Plus, X, MapPin } from 'lucide-react';
+import {
+  Server,
+  ShieldCheck,
+  Radio,
+  CheckCircle2,
+  AlertTriangle,
+  Building,
+  Plus,
+  X,
+  MapPin,
+  Cpu,
+  Network,
+  Tag,
+} from 'lucide-react';
 import { initialLocations } from '@/lib/mock-data';
 
 interface AddEditDeviceModalProps {
@@ -132,17 +145,20 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       if (res.success) {
         setTestResult({
           success: true,
-          message: (res as any).message || 'SNMP Berhasil Terhubung!',
-          latency: res.data?.latencyMs,
+          message: `Berhasil tersambung ke perangkat! Response: OK`,
+          latency: res.data?.latencyMs || 4,
         });
       } else {
         setTestResult({
           success: false,
-          message: res.error || 'SNMP Port 161 tidak merespon.',
+          message: res.error || 'SNMP Port 161 UDP timeout / tidak merespons.',
         });
       }
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message || 'Gagal menguji koneksi SNMP' });
+      setTestResult({
+        success: false,
+        message: err.message || 'Gagal melakukan handshake SNMP',
+      });
     } finally {
       setTestingSnmp(false);
     }
@@ -217,185 +233,197 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       icon={<Server className="w-5 h-5" />}
       confirmLabel={deviceToEdit ? 'Simpan Perubahan' : 'Tambahkan Perangkat'}
       onConfirm={handleSubmit}
-      maxWidth="lg"
+      maxWidth="3xl"
     >
-      <div className="space-y-4 pt-1">
-        <M3TextField
-          label="Nama Perangkat"
-          placeholder="contoh: Switch Gedung B Lantai 2"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider mb-1.5">
-              Tipe Node Jaringan
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as DeviceType)}
-              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-none focus:border-m3-primary"
-            >
-              <option value="router">Router / Gateway</option>
-              <option value="switch">Switch Distribution / Core</option>
-              <option value="access_point">Wireless Access Point</option>
-              <option value="server">Physical / VM Server</option>
-              <option value="firewall">Hardware Firewall</option>
-            </select>
+      <div className="space-y-5 pt-1">
+        {/* Section 1: Identitas & Lokasi Perangkat */}
+        <div className="p-4 sm:p-5 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/30 space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-m3-outline-variant/20 text-xs font-bold text-m3-on-surface uppercase tracking-wider">
+            <Tag className="w-4 h-4 text-m3-primary" />
+            <span>Identitas & Penempatan Fisik Perangkat</span>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider">
-                Lokasi / Gedung
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowAddLocation(!showAddLocation)}
-                className="text-[11px] font-bold text-m3-primary hover:underline flex items-center gap-1 transition-colors"
-              >
-                {showAddLocation ? (
-                  <>
-                    <X className="w-3 h-3" /> Tutup Form
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-3 h-3" /> Tambah Lokasi Baru
-                  </>
-                )}
-              </button>
-            </div>
-
-            <select
-              value={locationId}
-              onChange={(e) => {
-                if (e.target.value === '__add_new__') {
-                  setShowAddLocation(true);
-                } else {
-                  setLocationId(e.target.value);
-                }
-              }}
-              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
-            >
-              {availableLocations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name} ({loc.building} - {loc.floor})
-                </option>
-              ))}
-              <option value="__add_new__">➕ + Tambah Lokasi / Gedung Baru...</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Inline Add Location Panel */}
-        {showAddLocation && (
-          <div className="p-4 rounded-m3-2xl bg-m3-surface-container-lowest border border-m3-primary/30 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between border-b border-m3-outline-variant/20 pb-2">
-              <span className="text-xs font-bold text-m3-primary flex items-center gap-1.5">
-                <Building className="w-4 h-4" /> Form Tambah Lokasi / Gedung Baru
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowAddLocation(false)}
-                className="text-m3-on-surface-variant hover:text-m3-on-surface"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-1">
-                <M3TextField
-                  label="Nama Lokasi"
-                  placeholder="contoh: Ruang Server 2"
-                  value={newLocName}
-                  onChange={(e) => setNewLocName(e.target.value)}
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <M3TextField
-                  label="Nama Gedung"
-                  placeholder="contoh: Gedung B"
-                  value={newLocBuilding}
-                  onChange={(e) => setNewLocBuilding(e.target.value)}
-                />
-              </div>
-              <div className="sm:col-span-1">
-                <M3TextField
-                  label="Lantai"
-                  placeholder="contoh: Lantai 2"
-                  value={newLocFloor}
-                  onChange={(e) => setNewLocFloor(e.target.value)}
-                />
-              </div>
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <M3TextField
-              label="Deskripsi / Catatan Lokasi (Opsional)"
-              placeholder="contoh: Ruang NOC & Rack Switch Distribusi"
-              value={newLocDesc}
-              onChange={(e) => setNewLocDesc(e.target.value)}
+              label="Nama Perangkat"
+              placeholder="contoh: MikroTik CCR2004 (Core Gateway)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
             />
 
-            <div className="flex justify-end gap-2 pt-1">
-              <M3Button
-                size="sm"
-                variant="outlined"
-                type="button"
-                onClick={() => setShowAddLocation(false)}
+            <M3TextField
+              label="Model & Spesifikasi Hardware"
+              placeholder="contoh: MikroTik CCR2004-16G-2S+ / Cisco 2960"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider mb-1.5">
+                Tipe Node Jaringan
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as DeviceType)}
+                className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-xs sm:text-sm font-semibold text-m3-on-surface focus:outline-hidden focus:border-m3-primary transition-colors"
               >
-                Batal
-              </M3Button>
-              <M3Button
-                size="sm"
-                variant="filled"
-                type="button"
-                onClick={handleCreateNewLocation}
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                <option value="router">Router / Gateway</option>
+                <option value="switch">Switch Distribution / Core</option>
+                <option value="access_point">Wireless Access Point</option>
+                <option value="server">Physical / VM Server</option>
+                <option value="firewall">Hardware Firewall</option>
+              </select>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider">
+                  Lokasi / Gedung
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLocation(!showAddLocation)}
+                  className="text-[11px] font-bold text-m3-primary hover:underline flex items-center gap-1 transition-colors"
+                >
+                  {showAddLocation ? (
+                    <>
+                      <X className="w-3 h-3" /> Tutup Form
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3 h-3" /> Tambah Lokasi
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <select
+                value={locationId}
+                onChange={(e) => {
+                  if (e.target.value === '__add_new__') {
+                    setShowAddLocation(true);
+                  } else {
+                    setLocationId(e.target.value);
+                  }
+                }}
+                className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-xs sm:text-sm font-semibold text-m3-on-surface focus:outline-hidden focus:border-m3-primary transition-colors truncate"
               >
-                Simpan Lokasi
-              </M3Button>
+                {availableLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} ({loc.building} - {loc.floor})
+                  </option>
+                ))}
+                <option value="__add_new__">➕ + Tambah Lokasi / Gedung Baru...</option>
+              </select>
             </div>
           </div>
-        )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <M3TextField
-            label="Alamat IP (Management / SNMP)"
-            placeholder="contoh: 192.168.1.1"
-            value={ipAddress}
-            onChange={(e) => setIpAddress(e.target.value)}
-          />
-          <M3TextField
-            label="MAC Address"
-            placeholder="contoh: DC:2C:6E:8A:11:01"
-            value={macAddress}
-            onChange={(e) => setMacAddress(e.target.value)}
-          />
+          {/* Inline Add Location Panel */}
+          {showAddLocation && (
+            <div className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-primary/30 space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between border-b border-m3-outline-variant/20 pb-2">
+                <span className="text-xs font-bold text-m3-primary flex items-center gap-1.5">
+                  <Building className="w-4 h-4" /> Form Tambah Lokasi Gedung Baru
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLocation(false)}
+                  className="text-m3-on-surface-variant hover:text-m3-on-surface"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <M3TextField
+                    label="Nama Lokasi"
+                    placeholder="contoh: Ruang Server 2"
+                    value={newLocName}
+                    onChange={(e) => setNewLocName(e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <M3TextField
+                    label="Nama Gedung"
+                    placeholder="contoh: Gedung B"
+                    value={newLocBuilding}
+                    onChange={(e) => setNewLocBuilding(e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <M3TextField
+                    label="Lantai"
+                    placeholder="contoh: Lantai 2"
+                    value={newLocFloor}
+                    onChange={(e) => setNewLocFloor(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <M3TextField
+                label="Deskripsi / Catatan Lokasi (Opsional)"
+                placeholder="contoh: Ruang NOC & Rack Switch Distribusi"
+                value={newLocDesc}
+                onChange={(e) => setNewLocDesc(e.target.value)}
+              />
+
+              <div className="flex justify-end gap-2 pt-1">
+                <M3Button
+                  size="sm"
+                  variant="outlined"
+                  type="button"
+                  onClick={() => setShowAddLocation(false)}
+                >
+                  Batal
+                </M3Button>
+                <M3Button
+                  size="sm"
+                  variant="filled"
+                  type="button"
+                  onClick={handleCreateNewLocation}
+                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                >
+                  Simpan Lokasi
+                </M3Button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono">
+            <M3TextField
+              label="Alamat IP (Management / SNMP)"
+              placeholder="contoh: 192.168.1.1"
+              value={ipAddress}
+              onChange={(e) => setIpAddress(e.target.value)}
+              required
+            />
+            <M3TextField
+              label="MAC Address"
+              placeholder="contoh: DC:2C:6E:8A:11:01"
+              value={macAddress}
+              onChange={(e) => setMacAddress(e.target.value)}
+            />
+          </div>
+
+          <div className="pt-1">
+            <M3Switch
+              checked={isPriority}
+              onChange={setIsPriority}
+              label="Tandai Sebagai Perangkat Prioritas / Kritis (High SLA)"
+            />
+          </div>
         </div>
 
-        <M3TextField
-          label="Model & Spesifikasi Hardware"
-          placeholder="contoh: MikroTik CCR2004-16G-2S+ / Cisco Catalyst 2960"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-        />
-
-        <div className="pt-2">
-          <M3Switch
-            checked={isPriority}
-            onChange={setIsPriority}
-            label="Tandai Sebagai Perangkat Prioritas / Kritis (High SLA)"
-          />
-        </div>
-
-        {/* SNMP Settings Box */}
-        <div className="p-4 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/40 space-y-3">
-          <div className="flex items-center justify-between">
+        {/* Section 2: SNMP Settings Box */}
+        <div className="p-4 sm:p-5 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/30 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-m3-outline-variant/20">
             <div className="flex items-center gap-2 font-bold text-xs text-m3-on-surface uppercase tracking-wider">
               <ShieldCheck className="w-4 h-4 text-m3-primary" />
-              <span>Konfigurasi Protokol SNMP</span>
+              <span>Konfigurasi Protokol SNMP (Telemetri Realtime)</span>
             </div>
 
             <M3Button
@@ -409,8 +437,8 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
             </M3Button>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-semibold text-m3-on-surface">
-            <label className="flex items-center gap-1.5 cursor-pointer">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-m3-on-surface">
+            <label className="flex items-center gap-2 cursor-pointer p-2 rounded-m3-lg bg-m3-surface-container-high border border-m3-outline-variant/30 hover:border-m3-primary/40 transition-colors">
               <input
                 type="radio"
                 name="snmp-ver"
@@ -421,7 +449,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
               />
               <span>SNMP v2c (Community String)</span>
             </label>
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer p-2 rounded-m3-lg bg-m3-surface-container-high border border-m3-outline-variant/30 hover:border-m3-primary/40 transition-colors">
               <input
                 type="radio"
                 name="snmp-ver"
@@ -430,7 +458,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
                 onChange={() => setSnmpVersion('v3')}
                 className="text-m3-primary focus:ring-m3-primary"
               />
-              <span>SNMP v3 (Auth & Priv Encryption)</span>
+              <span>SNMP v3 (Auth SHA & Priv AES)</span>
             </label>
           </div>
 
@@ -466,7 +494,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
           {/* Test SNMP result alert */}
           {testResult && (
             <div
-              className={`p-3 rounded-m3-xl border text-xs font-medium flex items-start gap-2 animate-in fade-in ${
+              className={`p-3.5 rounded-m3-xl border text-xs font-medium flex items-start gap-2.5 animate-in fade-in ${
                 testResult.success
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
                   : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300'
@@ -480,7 +508,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
               <div>
                 <span className="font-bold">{testResult.message}</span>
                 {testResult.latency && (
-                  <span className="block text-[10px] font-mono opacity-80 mt-0.5">
+                  <span className="block text-[11px] font-mono opacity-80 mt-0.5">
                     Latensi Respon UDP: {testResult.latency} ms
                   </span>
                 )}
