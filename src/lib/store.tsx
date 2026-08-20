@@ -143,6 +143,8 @@ interface NmsContextType {
   addQueue: (queue: any) => void;
   syncInterfaces: (deviceId?: string) => Promise<void>;
   addInterface: (iface: any) => void;
+  updateInterface: (id: string, updates: Partial<DeviceInterface>) => void;
+  updateAllInterfaceSpeeds: (deviceId: string, speed: string) => void;
   syncDeviceViaSnmp: (deviceId: string) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
   testSnmpConnection: (config: any) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
 }
@@ -587,6 +589,33 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     nmsApi.createInterface(created).catch(e => console.warn('Failed to persist createInterface:', e));
     addAuditLog('ADD_INTERFACE', `Menambahkan interface baru: ${created.name}`);
   }, [devices, addAuditLog]);
+
+  const updateInterface = useCallback((id: string, updates: Partial<DeviceInterface>) => {
+    setInterfaces(prev => {
+      const updated = prev.map(i => (i.id === id ? { ...i, ...updates } : i));
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_interfaces', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    addAuditLog('UPDATE_INTERFACE', `Memperbarui konfigurasi port interface: ${id}`);
+  }, [addAuditLog]);
+
+  const updateAllInterfaceSpeeds = useCallback((deviceId: string, speed: string) => {
+    setInterfaces(prev => {
+      const updated = prev.map(i => {
+        if (i.device_id === deviceId && i.type === 'ethernet') {
+          return { ...i, speed };
+        }
+        return i;
+      });
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_interfaces', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    addAuditLog('UPDATE_INTERFACE_SPEEDS', `Mengubah kecepatan port default untuk perangkat ${deviceId} menjadi ${speed}`);
+  }, [addAuditLog]);
 
   const syncDeviceViaSnmp = useCallback(async (deviceId: string) => {
     try {
@@ -1204,6 +1233,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addQueue,
     syncInterfaces,
     addInterface,
+    updateInterface,
+    updateAllInterfaceSpeeds,
     syncDeviceViaSnmp,
     testSnmpConnection,
   };

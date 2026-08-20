@@ -12,6 +12,7 @@ import { PingTestModal } from '@/components/devices/PingTestModal';
 import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { AddEditDeviceModal } from '@/components/devices/AddEditDeviceModal';
 import { SnmpSyncModal } from '@/components/devices/SnmpSyncModal';
+import { InterfaceTable } from '@/components/devices/InterfaceTable';
 import {
   Server,
   ArrowLeft,
@@ -270,124 +271,14 @@ export default function DeviceDetailPage() {
 
       {/* Tab 2: Interfaces */}
       {activeTab === 'interfaces' && (
-        <M3Card className="p-4 sm:p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-4 animate-in fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-m3-outline-variant/20">
-            <div>
-              <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
-                Daftar Port Ethernet & SFP Interface
-              </h3>
-              <p className="text-xs text-m3-on-surface-variant mt-0.5">
-                Monitoring live status link, bandwidth throughput (RX/TX), dan error rate per port
-              </p>
-            </div>
-            <M3Button
-              size="sm"
-              variant="outlined"
-              loading={isScanningInterfaces}
-              onClick={handleScanInterfaces}
-              icon={<RefreshCw className="w-4 h-4" />}
-            >
-              {isScanningInterfaces ? 'Memindai SNMP...' : 'Pindai Port Interface (SNMP)'}
-            </M3Button>
-          </div>
-
-          {/* Mobile Cards for Interfaces */}
-          <div className="space-y-3 block md:hidden">
-            {deviceInterfaces.map((iface) => (
-              <div
-                key={iface.id}
-                className="p-3.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-2 text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-sm text-m3-on-surface">{iface.name}</span>
-                  <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      iface.status === 'up'
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                    }`}
-                  >
-                    {iface.status.toUpperCase()} ({iface.speed})
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-m3-outline-variant/20 font-mono">
-                  <div className="p-2 rounded-m3-md bg-m3-surface-container-lowest">
-                    <span className="text-[10px] text-m3-on-surface-variant font-sans block">Download (RX)</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatMbps(iface.rx_rate)}
-                    </span>
-                  </div>
-                  <div className="p-2 rounded-m3-md bg-m3-surface-container-lowest">
-                    <span className="text-[10px] text-m3-on-surface-variant font-sans block">Upload (TX)</span>
-                    <span className="font-bold text-sky-600 dark:text-sky-400">
-                      {formatMbps(iface.tx_rate)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant font-mono pt-1">
-                  <span>Total: ↓ {formatBytes(iface.rx_bytes)} / ↑ {formatBytes(iface.tx_bytes)}</span>
-                  <span>Error: {iface.error_rate}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop Table for Interfaces */}
-          <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest hidden md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[650px]">
-                <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold">
-                  <tr>
-                    <th className="py-3 px-4">Nama Interface</th>
-                    <th className="py-3 px-4">Status & Kecepatan</th>
-                    <th className="py-3 px-4">Trafik Download (RX)</th>
-                    <th className="py-3 px-4">Trafik Upload (TX)</th>
-                    <th className="py-3 px-4">Total Data Masuk / Keluar</th>
-                    <th className="py-3 px-4 text-right">Error Rate</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-m3-outline-variant/20">
-                  {deviceInterfaces.map((iface) => (
-                    <tr key={iface.id} className="hover:bg-m3-surface-container-high/40">
-                      <td className="py-3 px-4 font-bold font-mono text-m3-on-surface">
-                        {iface.name}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            iface.status === 'up'
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                          }`}
-                        >
-                          {iface.status.toUpperCase()} ({iface.speed})
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                        {formatMbps(iface.rx_rate)}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">
-                        {formatMbps(iface.tx_rate)}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-m3-on-surface-variant text-[11px]">
-                        ↓ {formatBytes(iface.rx_bytes)} / ↑ {formatBytes(iface.tx_bytes)}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono">
-                        {iface.error_rate > 0 ? (
-                          <span className="text-rose-500 font-bold">{iface.error_rate} pkts/s</span>
-                        ) : (
-                          <span className="text-emerald-500">0</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </M3Card>
+        <div className="animate-in fade-in">
+          <InterfaceTable
+            deviceId={device.id}
+            interfaces={deviceInterfaces}
+            onScanSnmp={handleScanInterfaces}
+            isScanning={isScanningInterfaces}
+          />
+        </div>
       )}
 
       {/* Tab 3: Queues */}

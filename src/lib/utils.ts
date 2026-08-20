@@ -18,7 +18,49 @@ export function formatMbps(mbps: number, decimals = 1) {
   if (mbps >= 1000) {
     return `${(mbps / 1000).toFixed(decimals)} Gbps`;
   }
-  return `${mbps.toFixed(decimals)} Mbps`;
+  if (mbps >= 1) {
+    return `${mbps.toFixed(decimals)} Mbps`;
+  }
+  if (mbps >= 0.001) {
+    return `${(mbps * 1000).toFixed(decimals)} kbps`;
+  }
+  if (mbps > 0) {
+    return `${Math.round(mbps * 1000000)} bps`;
+  }
+  return '0 bps';
+}
+
+export function formatThroughput(
+  rateInMbps: number,
+  mode: 'auto' | 'mbps' | 'kbps' | 'bps' = 'auto',
+  decimals = 1
+): string {
+  if (!rateInMbps || rateInMbps === 0) return '0 bps';
+
+  const bps = rateInMbps * 1000 * 1000;
+  const kbps = rateInMbps * 1000;
+
+  if (mode === 'bps') {
+    return `${Math.round(bps).toLocaleString()} bps`;
+  }
+  if (mode === 'kbps') {
+    return `${kbps.toFixed(decimals)} kbps`;
+  }
+  if (mode === 'mbps') {
+    return `${rateInMbps.toFixed(decimals)} Mbps`;
+  }
+
+  // Auto format (Like Winbox: bps / kbps / Mbps / Gbps)
+  if (rateInMbps >= 1000) {
+    return `${(rateInMbps / 1000).toFixed(decimals)} Gbps`;
+  }
+  if (rateInMbps >= 1) {
+    return `${rateInMbps.toFixed(decimals)} Mbps`;
+  }
+  if (rateInMbps >= 0.001) {
+    return `${kbps.toFixed(decimals)} kbps`;
+  }
+  return `${Math.round(bps)} bps`;
 }
 
 export function formatUptime(seconds: number): string {

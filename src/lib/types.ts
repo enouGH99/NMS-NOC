@@ -55,12 +55,18 @@ export interface DeviceInterface {
   id: string;
   device_id: string;
   name: string;
-  type: 'ethernet' | 'sfp' | 'wlan' | 'bridge' | 'vlan';
+  type: 'ethernet' | 'sfp' | 'wlan' | 'bridge' | 'vlan' | 'ovpn' | 'pptp' | 'l2tp' | 'pppoe';
   mac_address: string;
   status: 'up' | 'down';
-  speed: string; // e.g. "1 Gbps", "10 Gbps"
+  speed: string; // e.g. "100 Mbps (Fast Ethernet)", "1 Gbps", "10 Gbps"
+  mtu?: number; // e.g. 1500
+  l2_mtu?: number; // e.g. 1596
   rx_rate: number; // Mbps
   tx_rate: number; // Mbps
+  rx_packet_ps?: number; // Rx Packet p/s (e.g. 1801)
+  tx_packet_ps?: number; // Tx Packet p/s (e.g. 1008)
+  fp_rx_rate?: number; // FastPath Rx Mbps
+  fp_tx_rate?: number; // FastPath Tx Mbps
   rx_bytes: number; // Total bytes
   tx_bytes: number; // Total bytes
   error_rate: number; // pkts/sec
