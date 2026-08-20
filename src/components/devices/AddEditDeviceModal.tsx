@@ -494,25 +494,55 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
           {/* Test SNMP result alert */}
           {testResult && (
             <div
-              className={`p-3.5 rounded-m3-xl border text-xs font-medium flex items-start gap-2.5 animate-in fade-in ${
+              className={`p-4 rounded-m3-2xl border text-xs font-medium space-y-2.5 animate-in fade-in ${
                 testResult.success
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
                   : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300'
               }`}
             >
-              {testResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              )}
-              <div>
-                <span className="font-bold">{testResult.message}</span>
-                {testResult.latency && (
-                  <span className="block text-[11px] font-mono opacity-80 mt-0.5">
-                    Latensi Respon UDP: {testResult.latency} ms
-                  </span>
+              <div className="flex items-start gap-2.5">
+                {testResult.success ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
                 )}
+                <div>
+                  <span className="font-bold text-sm">{testResult.message}</span>
+                  {testResult.latency && (
+                    <span className="block text-[11px] font-mono opacity-80 mt-0.5">
+                      Latensi Respon UDP: {testResult.latency} ms
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {!testResult.success && (
+                <div className="pt-2 border-t border-rose-500/20 text-xs space-y-2 text-m3-on-surface">
+                  <div className="font-bold text-rose-600 dark:text-rose-400">
+                    💡 Checklist Pemeriksaan MikroTik:
+                  </div>
+                  <ol className="list-decimal pl-4 space-y-1 text-[11px] text-m3-on-surface-variant">
+                    <li>
+                      <strong>Aktifkan Service SNMP:</strong> Di Winbox, buka <strong>IP → SNMP</strong> dan pastikan checkbox <strong>Enabled</strong> sudah dicentang.
+                    </li>
+                    <li>
+                      <strong>Community String:</strong> Di Winbox <strong>IP → SNMP → Communities</strong>, pastikan nama community cocok (contoh: <code>{snmpCommunity || 'public_nms'}</code> atau ubah form ini ke <code>public</code>).
+                    </li>
+                    <li>
+                      <strong>Addresses:</strong> Pastikan field <code>Addresses</code> di setting community bernilai <code>0.0.0.0/0</code> agar request dari IP NMS tidak ditolak.
+                    </li>
+                  </ol>
+
+                  <div className="p-2.5 rounded-m3-lg bg-m3-surface-container-lowest border border-m3-outline-variant/30 text-[11px] font-mono text-m3-on-surface">
+                    <div className="text-[10px] text-m3-primary font-bold uppercase mb-1">
+                      Perintah Cepat Terminal MikroTik:
+                    </div>
+                    <code className="select-all block text-emerald-500">
+                      /snmp set enabled=yes; /snmp community add name={snmpCommunity || 'public_nms'} addresses=0.0.0.0/0 read-access=yes
+                    </code>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
