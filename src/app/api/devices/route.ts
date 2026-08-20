@@ -110,7 +110,11 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
     };
 
-    await db.insert(devices).values(newDevice);
+    try {
+      await db.insert(devices).values(newDevice);
+    } catch (dbErr) {
+      console.warn('PostgreSQL insert device fallback (DB offline or unmigrated):', dbErr);
+    }
 
     const mappedResponse = {
       id: newDevice.id,

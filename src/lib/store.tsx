@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Device,
+  DeviceStatus,
   Alert,
   AlertRule,
   RepairRecord,
@@ -187,7 +188,18 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return initialLocations;
   });
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<Device[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nms_devices');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [interfaces, setInterfaces] = useState<DeviceInterface[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -309,12 +321,34 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         let loadedDevices: Device[] = [];
-        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
+        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value) && devicesRes.value.length > 0) {
           loadedDevices = devicesRes.value;
           setDevices(devicesRes.value);
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('nms_devices', JSON.stringify(devicesRes.value)); } catch {}
+          }
+        } else {
+          if (typeof window !== 'undefined') {
+            try {
+              const saved = localStorage.getItem('nms_devices');
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  loadedDevices = parsed;
+                  setDevices(parsed);
+                }
+              }
+            } catch {}
+          }
         }
-        if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value)) {
+
+        if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value) && locationsRes.value.length > 0) {
           setLocations(locationsRes.value);
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('nms_locations', JSON.stringify(locationsRes.value)); } catch {}
+          }
+        } else if (locations.length === 0) {
+          setLocations(initialLocations);
         }
         if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value)) {
           setAlerts(alertsRes.value);
@@ -647,8 +681,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // 1. Update device in state
         if (system) {
-          setDevices(prev =>
-            prev.map(d =>
+          setDevices(prev => {
+            const updated = prev.map(d =>
               d.id === deviceId
                 ? {
                     ...d,
@@ -659,12 +693,16 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     uptime: system.sysUpTime,
                     voltage: system.voltage,
                     latency: latencyMs || d.latency,
-                    status: 'online',
+                    status: 'online' as DeviceStatus,
                     last_seen: new Date().toISOString(),
                   }
                 : d
-            )
-          );
+            );
+            if (typeof window !== 'undefined') {
+              try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+            }
+            return updated;
+          });
         }
 
         // 2. Update interfaces in state
@@ -802,7 +840,13 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       last_seen: new Date().toISOString(),
       location_name: loc ? loc.name : 'Unknown Location',
     };
-    setDevices(prev => [...prev, created]);
+    setDevices(prev => {
+      const updated = [...prev, created];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
 
     // Automatically generate and register default interface ports for the new device
     const newIfaces = generateDefaultInterfaces(created.id, created.type, created.mac_address, created.name);
@@ -822,23 +866,37 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [locations, addAuditLog, syncQueues, syncInterfaces]);
 
   const updateDevice = useCallback((id: string, updates: Partial<Device>) => {
-    setDevices(prev =>
-      prev.map(d => (d.id === id ? { ...d, ...updates, last_seen: new Date().toISOString() } : d))
-    );
+    setDevices(prev => {
+      const updated = prev.map(d => (d.id === id ? { ...d, ...updates, last_seen: new Date().toISOString() } : d));
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
     addAuditLog('UPDATE_DEVICE', `Memperbarui konfigurasi perangkat ID: ${id}`);
     nmsApi.updateDevice(id, updates).catch(e => console.warn('Failed to sync updateDevice:', e));
   }, [addAuditLog]);
 
   const deleteDevice = useCallback((id: string) => {
-    setDevices(prev => prev.filter(d => d.id !== id));
+    setDevices(prev => {
+      const updated = prev.filter(d => d.id !== id);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
     addAuditLog('DELETE_DEVICE', `Menghapus perangkat ID: ${id}`);
     nmsApi.deleteDevice(id).catch(e => console.warn('Failed to sync deleteDevice:', e));
   }, [addAuditLog]);
 
   const toggleDevicePriority = useCallback((id: string) => {
-    setDevices(prev =>
-      prev.map(d => (d.id === id ? { ...d, is_priority: !d.is_priority } : d))
-    );
+    setDevices(prev => {
+      const updated = prev.map(d => (d.id === id ? { ...d, is_priority: !d.is_priority } : d));
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
   }, []);
 
   const acknowledgeAlert = useCallback((id: string) => {
