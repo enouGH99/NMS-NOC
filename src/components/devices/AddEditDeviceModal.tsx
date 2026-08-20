@@ -7,7 +7,8 @@ import { M3Dialog } from '../m3/M3Dialog';
 import { M3TextField } from '../m3/M3TextField';
 import { M3Switch } from '../m3/M3Switch';
 import { M3Button } from '../m3/M3Button';
-import { Server, ShieldCheck, Radio, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Server, ShieldCheck, Radio, CheckCircle2, AlertTriangle, Building, Plus, X, MapPin } from 'lucide-react';
+import { initialLocations } from '@/lib/mock-data';
 
 interface AddEditDeviceModalProps {
   isOpen: boolean;
@@ -20,20 +21,29 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
   onClose,
   deviceToEdit,
 }) => {
-  const { locations, addDevice, updateDevice, testSnmpConnection } = useNms();
+  const { locations, addLocation, addDevice, updateDevice, testSnmpConnection } = useNms();
+
+  const availableLocations = locations.length > 0 ? locations : initialLocations;
 
   const [name, setName] = useState('');
   const [type, setType] = useState<DeviceType>('router');
   const [ipAddress, setIpAddress] = useState('');
   const [macAddress, setMacAddress] = useState('');
   const [model, setModel] = useState('');
-  const [locationId, setLocationId] = useState(locations[0]?.id || '');
+  const [locationId, setLocationId] = useState(availableLocations[0]?.id || 'loc-1');
   const [isPriority, setIsPriority] = useState(false);
   const [snmpVersion, setSnmpVersion] = useState<'v2c' | 'v3'>('v2c');
   const [snmpCommunity, setSnmpCommunity] = useState('public_nms');
   const [v3User, setV3User] = useState('');
   const [v3AuthKey, setV3AuthKey] = useState('');
   const [v3PrivKey, setV3PrivKey] = useState('');
+
+  // Inline Add Location Form State
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [newLocName, setNewLocName] = useState('');
+  const [newLocBuilding, setNewLocBuilding] = useState('');
+  const [newLocFloor, setNewLocFloor] = useState('');
+  const [newLocDesc, setNewLocDesc] = useState('');
 
   const [testingSnmp, setTestingSnmp] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
@@ -45,7 +55,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       setIpAddress(deviceToEdit.ip_address);
       setMacAddress(deviceToEdit.mac_address);
       setModel(deviceToEdit.model);
-      setLocationId(deviceToEdit.location_id);
+      setLocationId(deviceToEdit.location_id || availableLocations[0]?.id || 'loc-1');
       setIsPriority(deviceToEdit.is_priority);
       setSnmpVersion(deviceToEdit.snmp_version);
       setSnmpCommunity(deviceToEdit.snmp_community || 'public_nms');
@@ -60,7 +70,7 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       setIpAddress('');
       setMacAddress('');
       setModel('');
-      setLocationId(locations[0]?.id || '');
+      setLocationId(availableLocations[0]?.id || 'loc-1');
       setIsPriority(false);
       setSnmpVersion('v2c');
       setSnmpCommunity('public_nms');
@@ -69,7 +79,29 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
       setV3PrivKey('');
     }
     setTestResult(null);
+    setShowAddLocation(false);
   }, [deviceToEdit, locations]);
+
+  const handleCreateNewLocation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!newLocName.trim() || !newLocBuilding.trim()) return;
+
+    const newId = `loc-${Date.now()}`;
+    addLocation({
+      name: newLocName.trim(),
+      building: newLocBuilding.trim(),
+      floor: newLocFloor.trim() || 'Lantai 1',
+      description: newLocDesc.trim() || undefined,
+      device_count: 0,
+    });
+
+    setLocationId(newId);
+    setNewLocName('');
+    setNewLocBuilding('');
+    setNewLocFloor('');
+    setNewLocDesc('');
+    setShowAddLocation(false);
+  };
 
   const handleTestSnmp = async () => {
     if (!ipAddress) {
@@ -214,22 +246,119 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider mb-1.5">
-              Lokasi / Gedung
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-m3-on-surface-variant uppercase tracking-wider">
+                Lokasi / Gedung
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowAddLocation(!showAddLocation)}
+                className="text-[11px] font-bold text-m3-primary hover:underline flex items-center gap-1 transition-colors"
+              >
+                {showAddLocation ? (
+                  <>
+                    <X className="w-3 h-3" /> Tutup Form
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3 h-3" /> Tambah Lokasi Baru
+                  </>
+                )}
+              </button>
+            </div>
+
             <select
               value={locationId}
-              onChange={(e) => setLocationId(e.target.value)}
-              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-none focus:border-m3-primary"
+              onChange={(e) => {
+                if (e.target.value === '__add_new__') {
+                  setShowAddLocation(true);
+                } else {
+                  setLocationId(e.target.value);
+                }
+              }}
+              className="w-full h-12 px-4 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant text-sm font-semibold text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
             >
-              {locations.map((loc) => (
+              {availableLocations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
                   {loc.name} ({loc.building} - {loc.floor})
                 </option>
               ))}
+              <option value="__add_new__">➕ + Tambah Lokasi / Gedung Baru...</option>
             </select>
           </div>
         </div>
+
+        {/* Inline Add Location Panel */}
+        {showAddLocation && (
+          <div className="p-4 rounded-m3-2xl bg-m3-surface-container-lowest border border-m3-primary/30 space-y-3 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-m3-outline-variant/20 pb-2">
+              <span className="text-xs font-bold text-m3-primary flex items-center gap-1.5">
+                <Building className="w-4 h-4" /> Form Tambah Lokasi / Gedung Baru
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddLocation(false)}
+                className="text-m3-on-surface-variant hover:text-m3-on-surface"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-1">
+                <M3TextField
+                  label="Nama Lokasi"
+                  placeholder="contoh: Ruang Server 2"
+                  value={newLocName}
+                  onChange={(e) => setNewLocName(e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-1">
+                <M3TextField
+                  label="Nama Gedung"
+                  placeholder="contoh: Gedung B"
+                  value={newLocBuilding}
+                  onChange={(e) => setNewLocBuilding(e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-1">
+                <M3TextField
+                  label="Lantai"
+                  placeholder="contoh: Lantai 2"
+                  value={newLocFloor}
+                  onChange={(e) => setNewLocFloor(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <M3TextField
+              label="Deskripsi / Catatan Lokasi (Opsional)"
+              placeholder="contoh: Ruang NOC & Rack Switch Distribusi"
+              value={newLocDesc}
+              onChange={(e) => setNewLocDesc(e.target.value)}
+            />
+
+            <div className="flex justify-end gap-2 pt-1">
+              <M3Button
+                size="sm"
+                variant="outlined"
+                type="button"
+                onClick={() => setShowAddLocation(false)}
+              >
+                Batal
+              </M3Button>
+              <M3Button
+                size="sm"
+                variant="filled"
+                type="button"
+                onClick={handleCreateNewLocation}
+                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+              >
+                Simpan Lokasi
+              </M3Button>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <M3TextField

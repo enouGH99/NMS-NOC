@@ -12,6 +12,10 @@ export async function GET() {
       list = [];
     }
 
+    if (list.length === 0) {
+      return NextResponse.json({ success: true, count: initialLocations.length, data: initialLocations });
+    }
+
     const mapped = list.map((loc: any) => ({
       id: loc.id,
       name: loc.name,

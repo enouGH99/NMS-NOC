@@ -106,6 +106,10 @@ interface NmsContextType {
   };
 
   // Actions
+  addLocation: (location: Omit<Location, 'id'>) => void;
+  updateLocation: (id: string, updates: Partial<Location>) => void;
+  deleteLocation: (id: string) => void;
+
   addDevice: (device: Omit<Device, 'id' | 'created_at' | 'last_seen'>) => void;
   updateDevice: (id: string, updates: Partial<Device>) => void;
   deleteDevice: (id: string) => void;
@@ -171,7 +175,18 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   // Entities state - Clean initial states (connected to PostgreSQL)
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<Location[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nms_locations');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return initialLocations;
+  });
   const [devices, setDevices] = useState<Device[]>([]);
   const [interfaces, setInterfaces] = useState<DeviceInterface[]>(() => {
     if (typeof window !== 'undefined') {
@@ -739,6 +754,45 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
   }, [devices, addAuditLog]);
 
+  const addLocation = useCallback((locationData: Omit<Location, 'id'>) => {
+    const newLocation: Location = {
+      ...locationData,
+      id: `loc-${Date.now()}`,
+      device_count: 0,
+    };
+    setLocations(prev => {
+      const updated = [...prev, newLocation];
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_locations', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    nmsApi.createLocation(newLocation).catch(e => console.warn('Failed to persist location:', e));
+    addAuditLog('ADD_LOCATION', `Menambahkan lokasi gedung baru: ${newLocation.name} (${newLocation.building})`);
+  }, [addAuditLog]);
+
+  const updateLocation = useCallback((id: string, updates: Partial<Location>) => {
+    setLocations(prev => {
+      const updated = prev.map(l => (l.id === id ? { ...l, ...updates } : l));
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_locations', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    addAuditLog('UPDATE_LOCATION', `Memperbarui data lokasi gedung ID: ${id}`);
+  }, [addAuditLog]);
+
+  const deleteLocation = useCallback((id: string) => {
+    setLocations(prev => {
+      const updated = prev.filter(l => l.id !== id);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('nms_locations', JSON.stringify(updated)); } catch {}
+      }
+      return updated;
+    });
+    addAuditLog('DELETE_LOCATION', `Menghapus lokasi gedung ID: ${id}`);
+  }, [addAuditLog]);
+
   const addDevice = useCallback((newDev: Omit<Device, 'id' | 'created_at' | 'last_seen'>) => {
     const loc = locations.find(l => l.id === newDev.location_id);
     const created: Device = {
@@ -1204,6 +1258,9 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentInboundMbps: latestThroughput.inbound,
       currentOutboundMbps: latestThroughput.outbound,
     },
+    addLocation,
+    updateLocation,
+    deleteLocation,
     addDevice,
     updateDevice,
     deleteDevice,
