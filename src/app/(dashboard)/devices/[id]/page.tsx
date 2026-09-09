@@ -45,7 +45,7 @@ import {
 export default function DeviceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces } = useNms();
+  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces, syncVpnTunnels } = useNms();
 
   const deviceId = params.id as string;
   const device = devices.find((d) => d.id === deviceId);
@@ -56,6 +56,7 @@ export default function DeviceDetailPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [snmpModalOpen, setSnmpModalOpen] = useState(false);
   const [isScanningInterfaces, setIsScanningInterfaces] = useState(false);
+  const [isSyncingVpns, setIsSyncingVpns] = useState(false);
 
   if (!device) {
     return (
@@ -346,9 +347,32 @@ export default function DeviceDetailPage() {
       {/* Tab 4: VPNs */}
       {activeTab === 'vpns' && (
         <M3Card className="p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-4 animate-in fade-in">
-          <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
-            Daftar Tunnel & User Sesi VPN
-          </h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
+                Daftar Tunnel & User Sesi VPN
+              </h3>
+              <p className="text-xs text-m3-on-surface-variant mt-0.5">
+                Sesi koneksi remote user & tunnel site-to-site aktif di MikroTik
+              </p>
+            </div>
+            <M3Button
+              size="sm"
+              variant="outlined"
+              loading={isSyncingVpns}
+              onClick={async () => {
+                setIsSyncingVpns(true);
+                try {
+                  await syncVpnTunnels(device.id, true);
+                } finally {
+                  setIsSyncingVpns(false);
+                }
+              }}
+              icon={<Radio className="w-3.5 h-3.5" />}
+            >
+              Segarkan Sesi VPN
+            </M3Button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {deviceVpns.map((vpn) => (
               <div key={vpn.id} className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-2">

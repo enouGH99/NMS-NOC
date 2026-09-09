@@ -3,12 +3,24 @@ import { db } from '@/db';
 import { vpnTunnels, devices } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { VpnTunnel } from '@/lib/types';
+import { pollDeviceSnmp } from '@/lib/snmp-poller';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const deviceId = searchParams.get('deviceId');
-    const refresh = searchParams.get('refresh') === 'true';
+    const forceRefresh = searchParams.get('refresh') === 'true';
+
+    // 1. Fetch target router info
+    let targetRouter: any = null;
+    try {
+      const routerRows = await db.select().from(devices);
+      targetRouter = deviceId
+        ? routerRows.find((d) => d.id === deviceId)
+        : routerRows.find((d) => d.type === 'router' || d.ipAddress === '192.168.3.1') || routerRows[0];
+    } catch {
+      targetRouter = null;
+    }
 
     let rows: any[] = [];
     try {
@@ -17,32 +29,31 @@ export async function GET(request: NextRequest) {
       } else {
         rows = await db.select().from(vpnTunnels);
       }
+    } catch {
+      rows = [];
+    }
 
-      // If refresh requested OR database empty, poll live VPN tunnels directly from MikroTik via SNMP
-      if (refresh || rows.length === 0) {
-        const routerRows = await db.select().from(devices);
-        const targetRouter = deviceId
-          ? routerRows.find((d) => d.id === deviceId)
-          : routerRows.find((d) => d.type === 'router') || routerRows[0];
-
-        if (targetRouter && targetRouter.ipAddress) {
-          const { pollDeviceSnmp } = await import('@/lib/snmp-poller');
+    // 2. If force refresh requested OR database empty OR rows has 0 connected tunnels, poll live MikroTik via SNMP
+    if (forceRefresh || rows.length === 0 || rows.filter((r) => r.status === 'connected').length === 0) {
+      if (targetRouter && targetRouter.ipAddress) {
+        try {
           const pollRes = await pollDeviceSnmp(targetRouter.id, {
             ipAddress: targetRouter.ipAddress,
             community: targetRouter.snmpCommunity || 'public_nms',
             version: (targetRouter.snmpVersion as any) || 'v2c',
-            timeoutMs: 3500,
+            timeoutMs: 3000,
             retries: 1,
           });
 
-          if (pollRes.success && pollRes.vpnTunnels.length > 0) {
-            // Delete old/stale VPN tunnels for this device in PostgreSQL
-            await db.delete(vpnTunnels).where(eq(vpnTunnels.deviceId, targetRouter.id));
+          if (pollRes.success && Array.isArray(pollRes.vpnTunnels) && pollRes.vpnTunnels.length > 0) {
+            // Delete old stale VPN tunnel records in PostgreSQL
+            try {
+              await db.delete(vpnTunnels).where(eq(vpnTunnels.deviceId, targetRouter.id));
+            } catch {}
 
             for (const t of pollRes.vpnTunnels) {
-              await db
-                .insert(vpnTunnels)
-                .values({
+              try {
+                await db.insert(vpnTunnels).values({
                   id: t.id,
                   deviceId: targetRouter.id,
                   name: t.name,
@@ -55,14 +66,19 @@ export async function GET(request: NextRequest) {
                   bytesOut: t.bytes_out,
                   updatedAt: new Date(),
                 });
+              } catch {}
             }
 
-            rows = await db.select().from(vpnTunnels).where(eq(vpnTunnels.deviceId, targetRouter.id));
+            // Reload fresh rows from database
+            rows = await db.select().from(vpnTunnels);
+            if (deviceId) {
+              rows = rows.filter((r) => r.deviceId === deviceId);
+            }
           }
+        } catch (pollErr) {
+          console.warn('Live SNMP VPN poll error:', pollErr);
         }
       }
-    } catch {
-      rows = [];
     }
 
     const mapped: VpnTunnel[] = rows.map((v: any) => ({
@@ -78,7 +94,7 @@ export async function GET(request: NextRequest) {
       bytes_out: Number(v.bytesOut || v.bytes_out || 0),
     }));
 
-    // Connected sessions first
+    // Natural sort: Connected sessions first, then alphabetical
     mapped.sort((a, b) => {
       if (a.status === 'connected' && b.status !== 'connected') return -1;
       if (a.status !== 'connected' && b.status === 'connected') return 1;

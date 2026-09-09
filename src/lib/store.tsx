@@ -713,7 +713,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
   }, [devices, addAuditLog]);
 
-  const syncVpnTunnels = useCallback(async (deviceId?: string, forceRefresh = false) => {
+  const syncVpnTunnels = useCallback(async (deviceId?: string, forceRefresh = true) => {
     try {
       const res: any = await nmsApi.getVpnTunnels(deviceId, forceRefresh);
       if (Array.isArray(res)) {
