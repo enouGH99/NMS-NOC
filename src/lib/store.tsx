@@ -126,8 +126,8 @@ interface NmsContextType {
   addInterface: (iface: any) => void;
   updateInterface: (id: string, updates: Partial<DeviceInterface>) => void;
   updateAllInterfaceSpeeds: (deviceId: string, speed: string) => void;
-  syncDeviceViaSnmp: (deviceId: string) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
-  testSnmpConnection: (config: any) => Promise<{ success: boolean; data?: any; error?: string; cliHelp?: string }>;
+  syncDeviceViaSnmp: (deviceId: string) => Promise<{ success: boolean; message?: string; data?: any; error?: string; cliHelp?: string }>;
+  testSnmpConnection: (config: any) => Promise<{ success: boolean; message?: string; data?: any; error?: string; cliHelp?: string }>;
 }
 
 const NmsContext = createContext<NmsContextType | null>(null);

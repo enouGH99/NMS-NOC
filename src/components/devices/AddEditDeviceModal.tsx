@@ -142,16 +142,18 @@ export const AddEditDeviceModal: React.FC<AddEditDeviceModalProps> = ({
             : undefined,
       });
 
-      if (res.success) {
+      if (res && res.success) {
+        const latency = res.data?.latencyMs || 4;
+        const descr = res.data?.system?.sysDescr || 'MikroTik RouterOS';
         setTestResult({
           success: true,
-          message: `Berhasil tersambung ke perangkat! Response: OK`,
-          latency: res.data?.latencyMs || 4,
+          message: res.message || `Koneksi SNMP Berhasil! Terhubung ke ${descr} (${latency} ms)`,
+          latency,
         });
       } else {
         setTestResult({
           success: false,
-          message: res.error || 'SNMP Port 161 UDP timeout / tidak merespons.',
+          message: res?.error || 'SNMP Port 161 UDP timeout / tidak merespons.',
         });
       }
     } catch (err: any) {

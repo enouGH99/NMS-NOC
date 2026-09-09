@@ -31,8 +31,30 @@ export const nmsApi = {
   updateDevice: (id: string, data: any) => fetchApi(`/api/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDevice: (id: string) => fetchApi(`/api/devices/${id}`, { method: 'DELETE' }),
   pingDevice: (id: string) => fetchApi(`/api/devices/${id}/ping`, { method: 'POST' }),
-  syncDeviceSnmp: (id: string, data?: any) => fetchApi(`/api/devices/${id}/snmp-sync`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  testSnmp: (data: any) => fetchApi('/api/devices/snmp-test', { method: 'POST', body: JSON.stringify(data) }),
+  syncDeviceSnmp: async (id: string, data?: any) => {
+    try {
+      const res = await fetch(`/api/devices/${id}/snmp-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {}),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
+  testSnmp: async (data: any) => {
+    try {
+      const res = await fetch('/api/devices/snmp-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  },
 
   getLocations: () => fetchApi('/api/locations'),
   createLocation: (data: any) => fetchApi('/api/locations', { method: 'POST', body: JSON.stringify(data) }),
