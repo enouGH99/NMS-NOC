@@ -21,9 +21,9 @@ export async function POST(
       // Fallback
     }
 
-    const ipAddress = body.ip_address || targetDevice?.ipAddress || targetDevice?.ip_address || '127.0.0.1';
+    const ipAddress = (body.ip_address || targetDevice?.ipAddress || targetDevice?.ip_address || '127.0.0.1').trim();
     const snmpVersion = body.snmp_version || targetDevice?.snmpVersion || targetDevice?.snmp_version || 'v2c';
-    let snmpCommunity = body.snmp_community || targetDevice?.snmpCommunity || targetDevice?.snmp_community || 'public_nms';
+    let snmpCommunity = (body.snmp_community || targetDevice?.snmpCommunity || targetDevice?.snmp_community || 'public_nms').trim();
     const snmpV3 = body.snmp_v3 || (targetDevice?.snmpV3 ? JSON.parse(targetDevice.snmpV3) : undefined);
 
     // Execute direct SNMP polling
@@ -32,8 +32,8 @@ export async function POST(
       version: snmpVersion,
       community: snmpCommunity,
       snmpV3,
-      timeoutMs: 2500,
-      retries: 1,
+      timeoutMs: 4000,
+      retries: 2,
     });
 
     // Smart Community Fallback: If 'public' failed, try 'public_nms' (or vice versa)
@@ -43,8 +43,8 @@ export async function POST(
         ipAddress,
         version: snmpVersion,
         community: fallbackCommunity,
-        timeoutMs: 2500,
-        retries: 1,
+        timeoutMs: 4000,
+        retries: 2,
       });
 
       if (fallbackResult.success) {

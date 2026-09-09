@@ -4,9 +4,13 @@ import { pollDeviceSnmp } from '@/lib/snmp-poller';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { ipAddress, version, community, snmpV3 } = body;
+    const { ipAddress, ip_address, version, community, snmp_community, snmpV3, snmp_v3 } = body;
+    const cleanIp = (ipAddress || ip_address || '').trim();
+    const cleanCommunity = (community || snmp_community || 'public_nms').trim();
+    const cleanVersion = version || 'v2c';
+    const cleanV3 = snmpV3 || snmp_v3;
 
-    if (!ipAddress) {
+    if (!cleanIp) {
       return NextResponse.json(
         { success: false, error: 'Alamat IP target wajib diisi' },
         { status: 400 }
@@ -14,22 +18,22 @@ export async function POST(request: NextRequest) {
     }
 
     let pollResult = await pollDeviceSnmp('test-device', {
-      ipAddress,
-      version: version || 'v2c',
-      community: community || 'public_nms',
-      snmpV3,
-      timeoutMs: 2500,
-      retries: 1,
+      ipAddress: cleanIp,
+      version: cleanVersion,
+      community: cleanCommunity,
+      snmpV3: cleanV3,
+      timeoutMs: 4000,
+      retries: 2,
     });
 
     if (!pollResult.success && (!version || version === 'v2c')) {
-      const fallbackCommunity = community === 'public' ? 'public_nms' : 'public';
+      const fallbackCommunity = cleanCommunity === 'public' ? 'public_nms' : 'public';
       const fallbackResult = await pollDeviceSnmp('test-device', {
-        ipAddress,
+        ipAddress: cleanIp,
         version: 'v2c',
         community: fallbackCommunity,
-        timeoutMs: 2500,
-        retries: 1,
+        timeoutMs: 4000,
+        retries: 2,
       });
       if (fallbackResult.success) {
         pollResult = fallbackResult;
