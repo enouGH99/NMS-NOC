@@ -308,67 +308,7 @@ export const autoDiscoveredDevices = pgTable('auto_discovered_devices', {
   discoveredAt: timestamp('discovered_at').defaultNow().notNull(),
 });
 
-// ----------------------------------------------------
-// 11. AI NETWORK OPTIMIZER (Fase 6)
-// ----------------------------------------------------
 
-export const aiLogAnomalies = pgTable('ai_log_anomalies', {
-  id: text('id').primaryKey(),
-  sourceDevice: text('source_device').notNull(),
-  category: text('category').notNull(), // 'firewall_drop' | 'queue_congestion' | 'interface_flap' | 'cpu_spike' | 'dns_latency'
-  severity: text('severity').notNull(), // 'high' | 'medium' | 'low'
-  title: text('title').notNull(),
-  description: text('description').notNull(),
-  logSample: text('log_sample').notNull(),
-  rootCause: text('root_cause').notNull(),
-  impact: text('impact').notNull(),
-  timestamp: timestamp('timestamp').defaultNow().notNull(),
-});
-
-export const lanRouteRecommendations = pgTable('lan_route_recommendations', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  targetSubnet: text('target_subnet').notNull(),
-  currentRoute: text('current_route').notNull(),
-  recommendedRoute: text('recommended_route').notNull(),
-  currentBottleneck: text('current_bottleneck').notNull(),
-  expectedImprovement: text('expected_improvement').notNull(),
-  vlanId: integer('vlan_id'),
-  priority: text('priority').notNull(), // 'critical' | 'recommended' | 'optional'
-  status: text('status').default('pending').notNull(), // 'pending' | 'applied'
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const deviceOptimizationPlans = pgTable('device_optimization_plans', {
-  id: text('id').primaryKey(),
-  deviceName: text('device_name').notNull(),
-  deviceIp: text('device_ip').notNull(),
-  category: text('category').notNull(), // 'qos_queue' | 'firewall_security' | 'resource_scheduling' | 'fasttrack_routing'
-  title: text('title').notNull(),
-  description: text('description').notNull(),
-  impactScore: integer('impact_score').notNull(),
-  cliScript: text('cli_script').notNull(),
-  applied: boolean('applied').default(false).notNull(),
-  appliedAt: timestamp('applied_at'),
-});
-
-export const aiConfigs = pgTable('ai_configs', {
-  id: text('id').primaryKey().default('default_config'),
-  provider: text('provider').default('google_gemini').notNull(),
-  model: text('model').default('gemini-2.5-flash').notNull(),
-  apiKey: text('api_key').default('').notNull(),
-  customEndpoint: text('custom_endpoint').default(''),
-  temperature: doublePrecision('temperature').default(0.2).notNull(),
-  maxTokens: integer('max_tokens').default(4096).notNull(),
-  autoScanEnabled: boolean('auto_scan_enabled').default(true).notNull(),
-  autoScanIntervalMinutes: integer('auto_scan_interval_minutes').default(15).notNull(),
-  autoGenerateScripts: boolean('auto_generate_scripts').default(true).notNull(),
-  notifyOnAnomaly: boolean('notify_on_anomaly').default(true).notNull(),
-  connectionStatus: text('connection_status').default('connected').notNull(),
-  lastTestedAt: timestamp('last_tested_at'),
-  responseTimeMs: integer('response_time_ms').default(215),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
 
 // ----------------------------------------------------
 // 12. TABLE RELATIONS

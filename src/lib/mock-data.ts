@@ -13,12 +13,7 @@ import {
   AuditLog,
   AutoDiscoveredDevice,
   CapacityMetric,
-  AiLogAnomaly,
-  LanRouteRecommendation,
-  DeviceOptimizationPlan,
-  AiSimulationMetrics,
   DashboardWidgetVisibility,
-  AiConfig,
 } from './types';
 
 export const initialLocations: Location[] = [
@@ -964,183 +959,12 @@ export const initialCapacityData: CapacityMetric[] = [
   { date: 'Nov 2026 (Prediksi)', bandwidth_used_mbps: 560, bandwidth_capacity_mbps: 500, storage_used_gb: 4150, storage_capacity_gb: 4000, predicted: true },
 ];
 
-// ----------------------------------------------------
-// FASE 6 — MOCK DATA UNTUK PENGOPTIMALAN JARINGAN AI
-// ----------------------------------------------------
-
-export const initialAiLogAnomalies: AiLogAnomaly[] = [
-  {
-    id: 'anom-1',
-    timestamp: '2026-08-19T03:42:15Z',
-    source_device: 'MikroTik CCR2004 (192.168.1.1)',
-    category: 'queue_congestion',
-    severity: 'high',
-    title: 'Bottleneck Bandwidth Subnet Staff (192.168.10.0/24)',
-    description: 'Terjadi antrean paket berulang pada Queue Staff Lt.1 yang mencapai batas 80M selama jam kerja puncak, memicu packet drop 12 pkts/s.',
-    log_sample: 'system,queue,warning queue Staff-Lt1 max-limit reached, packet dropped 124 packets in 60s',
-    root_cause: 'Penggunaan bandwidth streaming video resolusi tinggi dan download file CAD serentak oleh 45 host.',
-    impact: 'Latensi melonjak dari 4ms menjadi 48ms untuk seluruh staf operasional di Lantai 1.',
-  },
-  {
-    id: 'anom-2',
-    timestamp: '2026-08-19T03:20:00Z',
-    source_device: 'Cisco 2960 Switch Distribusi (192.168.1.2)',
-    category: 'interface_flap',
-    severity: 'medium',
-    title: 'Interface Flap pada Port GigabitEthernet0/24 (Trunk Gedung B)',
-    description: 'Port trunk menuju switch Gedung B mengalami link status flap (down/up) sebanyak 4 kali dalam kurun waktu 30 menit.',
-    log_sample: '%LINK-3-UPDOWN: Interface GigabitEthernet0/24, changed state to down / state to up',
-    root_cause: 'Konektor patch cord RJ45 kendor atau fluktuasi daya PoE pada switch ujung Gedung B.',
-    impact: 'Koneksi perangkat di Gedung B terputus sementara selama interval negosiasi STP (30-50 detik).',
-  },
-  {
-    id: 'anom-3',
-    timestamp: '2026-08-19T02:15:30Z',
-    source_device: 'FortiGate 100F (192.168.1.254)',
-    category: 'firewall_drop',
-    severity: 'low',
-    title: 'Anomali Port Scanning TCP/UDP dari IP Lokal 192.168.10.95',
-    description: 'Firewall memblokir 2.400 koneksi SYN/ACK mencurigakan ke port 445 dan 3389 dari satu host lokal.',
-    log_sample: 'date=2026-08-19 time=02:15:30 devname="FGT100F" action="deny" srcip=192.168.10.95 dstip=192.168.1.100 dstport=445 msg="Policy drop"',
-    root_cause: 'Kemungkinan malware/adware pada laptop staf yang memindai server internal SMB.',
-    impact: 'Trafik lokal meningkat 15%, potensi ancaman keamanan jika tidak diisolasi.',
-  },
-];
-
-export const initialLanRouteRecommendations: LanRouteRecommendation[] = [
-  {
-    id: 'route-rec-1',
-    title: 'Isolasi & Offload Trafik CCTV NVR ke VLAN 40 Dedicated',
-    target_subnet: '192.168.40.0/24 (Subnet CCTV & Streaming)',
-    current_route: 'Trafik 16 kamera CCTV berjalan di VLAN 10 bersama trafik PC Staf Operasional.',
-    recommended_route: 'Pindahkan port NVR ke Interface SFP-Plus2 (VLAN 40) dengan FastTrack Routing langsung ke Server Storage.',
-    current_bottleneck: 'Kamera CCTV memakan throughput konstan 32 Mbps di switch distribusi lantai 1.',
-    expected_improvement: 'Mengurangi beban trunk switch hingga 40% dan mengeliminasi packet drop pada PC kerja staf.',
-    vlan_id: 40,
-    priority: 'critical',
-    status: 'pending',
-  },
-  {
-    id: 'route-rec-2',
-    title: 'Aktivasi MikroTik FastPath & Hardware Offloading pada Switch Bridge',
-    target_subnet: '192.168.1.0/24 (LAN Core)',
-    current_route: 'Semua paket LAN antar subnet di-inspect oleh CPU MikroTik CCR2004 via software routing.',
-    recommended_route: 'Aktifkan IP FastTrack Rule dan L3 Hardware Offloading (L3HW) pada bridge VLAN.',
-    current_bottleneck: 'CPU load router utama mencapai 65% saat jam kerja puncak transfer file antar divisi.',
-    expected_improvement: 'Menurunkan CPU Load gateway dari 65% menjadi 18%, dan meningkatkan throughput LAN hingga 3x lipat.',
-    priority: 'recommended',
-    status: 'pending',
-  },
-  {
-    id: 'route-rec-3',
-    title: 'Pemberian Prioritas QoS DSCP EF (Expedited Forwarding) untuk VoIP & Zoom',
-    target_subnet: '192.168.20.0/24 (Ruang Direksi & Meeting)',
-    current_route: 'Paket video conference diperlakukan sebagai antrean Default Best Effort (Prioritas 8).',
-    recommended_route: 'Terapkan Mangle Rule DSCP 46 dengan Simple Queue Tree Prioritas 1 (Guaranteed 20 Mbps).',
-    current_bottleneck: 'Suara putus-putus dan frame drop saat rapat online bersamaan dengan jam upload laporan staf.',
-    expected_improvement: 'Jitter berkurang hingga < 2ms dan latensi VoIP konsisten di bawah 5ms.',
-    priority: 'recommended',
-    status: 'pending',
-  },
-];
-
-export const initialDeviceOptimizationPlans: DeviceOptimizationPlan[] = [
-  {
-    id: 'plan-1',
-    device_name: 'MikroTik CCR2004 (Core Gateway)',
-    device_ip: '192.168.1.1',
-    category: 'qos_queue',
-    title: 'Penerapan PCQ (Per Connection Queueing) Adaptif pada Subnet Staff',
-    description: 'Mengubah algoritma FIFO menjadi PCQ dinamis agar pembagian bandwidth antar 45 user merata secara otomatis tanpa membebani router.',
-    impact_score: 35,
-    cli_script: `# Skrip Optimasi QoS PCQ MikroTik RouterOS
-/queue type
-add name="PCQ-Download-Staff" kind=pcq pcq-rate=15M pcq-classifier=dst-address
-add name="PCQ-Upload-Staff" kind=pcq pcq-rate=5M pcq-classifier=src-address
-
-/queue simple
-set [find name="02. Queue Staff & Operasional Lt.1"] queue=PCQ-Upload-Staff/PCQ-Download-Staff priority=5/5
-/log info message="[AI-Optimizer] PCQ Staff Adaptive Queue Berhasil Diterapkan"`,
-    applied: false,
-  },
-  {
-    id: 'plan-2',
-    device_name: 'MikroTik CCR2004 (Core Gateway)',
-    device_ip: '192.168.1.1',
-    category: 'fasttrack_routing',
-    title: 'Aktivasi IP FastTrack Connection untuk Mengurangi Beban CPU',
-    description: 'Mengizinkan paket koneksi yang sudah establish dan related melewati CPU firewall secara cepat (bypass CPU processing).',
-    impact_score: 45,
-    cli_script: `# Skrip FastTrack Bypass Connection
-/ip firewall filter
-add chain=forward action=fasttrack-connection connection-state=established,related comment="[AI-Optimizer] FastTrack Established Connections" place-before=1
-add chain=forward action=accept connection-state=established,related comment="Accept Established/Related" place-before=2
-/log info message="[AI-Optimizer] FastTrack Connection Active"`,
-    applied: false,
-  },
-  {
-    id: 'plan-3',
-    device_name: 'FortiGate 100F (Edge Firewall)',
-    device_ip: '192.168.1.254',
-    category: 'firewall_security',
-    title: 'Quarantine Policy Otomatis untuk Host Terindikasi Malware (192.168.10.95)',
-    description: 'Mengisolasi IP yang melakukan port scanning lokal dari akses server internal dan hanya mengizinkan akses web terbatas.',
-    impact_score: 20,
-    cli_script: `# Skrip FortiGate CLI Quarantine Rule
-config firewall address
-    edit "QUARANTINE_IP_192.168.10.95"
-        set subnet 192.168.10.95 255.255.255.255
-    next
-end
-config firewall policy
-    edit 99
-        set name "AI_QUARANTINE_ISOLATION"
-        set srcintf "lan"
-        set dstintf "internal_servers"
-        set srcaddr "QUARANTINE_IP_192.168.10.95"
-        set dstaddr "all"
-        set action deny
-        set schedule "always"
-        set service "ALL"
-    next
-end`,
-    applied: false,
-  },
-];
-
-export const initialAiSimulationMetrics: AiSimulationMetrics = {
-  current_avg_latency: 18.5,
-  predicted_avg_latency: 6.2,
-  current_packet_loss: 1.8,
-  predicted_packet_loss: 0.0,
-  current_cpu_peak: 68,
-  predicted_cpu_peak: 24,
-  network_health_score: 76,
-  predicted_health_score: 98,
-};
-
 export const initialDashboardWidgets: DashboardWidgetVisibility = {
   throughput_chart: true,
-  ai_insights: true,
   ping_gauge: true,
   simple_queues: true,
   vpn_status: true,
   recent_alerts: true,
 };
 
-export const initialAiConfig: AiConfig = {
-  provider: 'google_gemini',
-  model: 'gemini-2.5-flash',
-  api_key: 'AIzaSyD-NOC-NMS-DEMO-SECURE-KEY-9948271',
-  custom_endpoint: '',
-  temperature: 0.2,
-  max_tokens: 4096,
-  auto_scan_enabled: true,
-  auto_scan_interval_minutes: 15,
-  auto_generate_scripts: true,
-  notify_on_anomaly: true,
-  connection_status: 'connected',
-  last_tested_at: '2026-08-19T03:30:00Z',
-  response_time_ms: 215,
-};
 

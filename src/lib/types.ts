@@ -199,83 +199,11 @@ export interface CapacityMetric {
   predicted?: boolean;
 }
 
-// ----------------------------------------------------
-// FASE 6 — AI NETWORK OPTIMIZER & LAN ROUTE TYPES
-// ----------------------------------------------------
-
-export interface AiLogAnomaly {
-  id: string;
-  timestamp: string;
-  source_device: string;
-  category: 'firewall_drop' | 'queue_congestion' | 'interface_flap' | 'cpu_spike' | 'dns_latency';
-  severity: 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  log_sample: string;
-  root_cause: string;
-  impact: string;
-}
-
-export interface LanRouteRecommendation {
-  id: string;
-  title: string;
-  target_subnet: string;
-  current_route: string;
-  recommended_route: string;
-  current_bottleneck: string;
-  expected_improvement: string;
-  vlan_id?: number;
-  priority: 'critical' | 'recommended' | 'optional';
-  status: 'pending' | 'applied';
-}
-
-export interface DeviceOptimizationPlan {
-  id: string;
-  device_name: string;
-  device_ip: string;
-  category: 'qos_queue' | 'firewall_security' | 'resource_scheduling' | 'fasttrack_routing';
-  title: string;
-  description: string;
-  impact_score: number; // e.g. +25% efficiency
-  cli_script: string;
-  applied: boolean;
-  applied_at?: string;
-}
-
-export interface AiSimulationMetrics {
-  current_avg_latency: number;
-  predicted_avg_latency: number;
-  current_packet_loss: number;
-  predicted_packet_loss: number;
-  current_cpu_peak: number;
-  predicted_cpu_peak: number;
-  network_health_score: number;
-  predicted_health_score: number;
-}
-
 export interface DashboardWidgetVisibility {
   throughput_chart: boolean;
-  ai_insights: boolean;
   ping_gauge: boolean;
   simple_queues: boolean;
   vpn_status: boolean;
   recent_alerts: boolean;
 }
 
-export type AiProvider = 'google_gemini' | 'openai' | 'anthropic_claude' | 'local_ollama';
-
-export interface AiConfig {
-  provider: AiProvider;
-  model: string;
-  api_key: string;
-  custom_endpoint?: string;
-  temperature: number;
-  max_tokens: number;
-  auto_scan_enabled: boolean;
-  auto_scan_interval_minutes: number;
-  auto_generate_scripts: boolean;
-  notify_on_anomaly: boolean;
-  connection_status: 'connected' | 'error' | 'untested';
-  last_tested_at?: string;
-  response_time_ms?: number;
-}

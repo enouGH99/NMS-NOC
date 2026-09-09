@@ -73,11 +73,4 @@ export const nmsApi = {
 
   getAuditLogs: () => fetchApi('/api/audit-logs'),
   createAuditLog: (data: any) => fetchApi('/api/audit-logs', { method: 'POST', body: JSON.stringify(data) }),
-
-  getOptimizerData: () => fetchApi('/api/optimizer'),
-  runOptimizerScan: () => fetchApi('/api/optimizer', { method: 'POST' }),
-  applyOptimization: (type: 'route' | 'plan', id: string) =>
-    fetchApi('/api/optimizer/apply', { method: 'POST', body: JSON.stringify({ type, id }) }),
-  getAiConfig: () => fetchApi('/api/optimizer/config'),
-  updateAiConfig: (data: any) => fetchApi('/api/optimizer/config', { method: 'PUT', body: JSON.stringify(data) }),
 };

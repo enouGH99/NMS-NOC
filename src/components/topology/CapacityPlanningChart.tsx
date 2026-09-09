@@ -22,7 +22,7 @@ export const CapacityPlanningChart: React.FC = () => {
         <div>
           <h3 className="text-base font-bold text-m3-on-surface flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-m3-primary" />
-            Prediksi Kapasitas (Capacity Planning AI)
+            Perencanaan Kapasitas & Trend Utilisasi (Capacity Planning)
           </h3>
           <p className="text-xs text-m3-on-surface-variant">
             Analisis tren historis & estimasi titik saturasi bandwidth (Threshold 500 Mbps)

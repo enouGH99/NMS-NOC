@@ -16,12 +16,7 @@ import {
   QueueTraffic,
   VpnTunnel,
   UserRole,
-  AiLogAnomaly,
-  LanRouteRecommendation,
-  DeviceOptimizationPlan,
-  AiSimulationMetrics,
   DashboardWidgetVisibility,
-  AiConfig,
 } from './types';
 import {
   initialDevices,
@@ -36,12 +31,7 @@ import {
   initialInterfaces,
   initialQueues,
   initialVpnTunnels,
-  initialAiLogAnomalies,
-  initialLanRouteRecommendations,
-  initialDeviceOptimizationPlans,
-  initialAiSimulationMetrics,
   initialDashboardWidgets,
-  initialAiConfig,
   generateDefaultInterfaces,
 } from './mock-data';
 import { nmsApi } from './api-client';
@@ -83,15 +73,7 @@ interface NmsContextType {
   isScanning: boolean;
   scanProgress: number;
 
-  // Fase 6 AI Optimizer State
-  aiAnomalies: AiLogAnomaly[];
-  lanRoutes: LanRouteRecommendation[];
-  deviceOptimizationPlans: DeviceOptimizationPlan[];
-  aiSimulation: AiSimulationMetrics;
   dashboardWidgets: DashboardWidgetVisibility;
-  aiConfig: AiConfig;
-  isAiAnalyzing: boolean;
-  aiScanProgress: number;
 
   // Realtime Simulation State
   throughputHistory: ThroughputPoint[];
@@ -134,13 +116,7 @@ interface NmsContextType {
   approveDiscoveredDevice: (id: string) => void;
   ignoreDiscoveredDevice: (id: string) => void;
 
-  // Fase 6 AI Optimizer Actions
-  runAiOptimizationScan: () => void;
-  applyOptimizationPlan: (planId: string) => void;
-  applyLanRouteRecommendation: (routeId: string) => void;
   toggleDashboardWidget: (key: keyof DashboardWidgetVisibility) => void;
-  updateAiConfig: (updates: Partial<AiConfig>) => void;
-  testAiConnection: (customConfig?: Partial<AiConfig>) => Promise<{ success: boolean; latency: number; message: string }>;
 
   addAuditLog: (action: string, details: string) => void;
   pingDevice: (ip: string) => Promise<{ latency: number; loss: number; success: boolean; packets: number[] }>;
@@ -225,28 +201,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
-  // Fase 6 AI Optimizer & Dashboard Widget State
-  const [aiAnomalies, setAiAnomalies] = useState<AiLogAnomaly[]>([]);
-  const [lanRoutes, setLanRoutes] = useState<LanRouteRecommendation[]>([]);
-  const [deviceOptimizationPlans, setDeviceOptimizationPlans] = useState<DeviceOptimizationPlan[]>([]);
-  const [aiSimulation, setAiSimulation] = useState<AiSimulationMetrics>(initialAiSimulationMetrics);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetVisibility>(initialDashboardWidgets);
-  const [aiConfig, setAiConfig] = useState<AiConfig>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('nms_ai_config');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          return { ...initialAiConfig, ...parsed };
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return initialAiConfig;
-  });
-  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
-  const [aiScanProgress, setAiScanProgress] = useState(0);
 
   // Check auth session on client mount
   useEffect(() => {
@@ -301,7 +256,6 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           usersRes,
           logsRes,
           discoveryRes,
-          optimizerRes,
           alertRulesRes,
           queuesRes,
           interfacesRes,
@@ -314,7 +268,6 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nmsApi.getUsers(),
           nmsApi.getAuditLogs(),
           nmsApi.getDiscovery(),
-          nmsApi.getOptimizerData(),
           nmsApi.getAlertRules(),
           nmsApi.getQueues(),
           nmsApi.getInterfaces(),
@@ -400,30 +353,6 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (discoveryRes.status === 'fulfilled' && Array.isArray(discoveryRes.value)) {
           setDiscoveredDevices(discoveryRes.value);
-        }
-        if (optimizerRes.status === 'fulfilled' && optimizerRes.value) {
-          const opt = optimizerRes.value;
-          if (opt.anomalies) setAiAnomalies(opt.anomalies);
-          if (opt.lanRoutes) setLanRoutes(opt.lanRoutes);
-          if (opt.optimizationPlans) setDeviceOptimizationPlans(opt.optimizationPlans);
-          if (opt.config) {
-            setAiConfig(prev => {
-              let localSaved: any = null;
-              if (typeof window !== 'undefined') {
-                try {
-                  const s = localStorage.getItem('nms_ai_config');
-                  if (s) localSaved = JSON.parse(s);
-                } catch {
-                  // Ignore
-                }
-              }
-              const merged = { ...initialAiConfig, ...opt.config, ...(localSaved || {}) };
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('nms_ai_config', JSON.stringify(merged));
-              }
-              return merged;
-            });
-          }
         }
       } catch (err) {
         console.warn('API sync fallback to clean initial state:', err);
@@ -1116,150 +1045,12 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [devices]);
 
-  // Fase 6 AI Optimizer Actions
-  const runAiOptimizationScan = useCallback(() => {
-    setIsAiAnalyzing(true);
-    setAiScanProgress(10);
-    nmsApi.runOptimizerScan().catch(e => console.warn('Failed to trigger AI scan:', e));
-
-    const interval = setInterval(() => {
-      setAiScanProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsAiAnalyzing(false);
-          addAuditLog('AI_OPTIMIZATION_SCAN', 'Menjalankan AI Deep Log & SNMP Metric Inspection pada seluruh perangkat jaringan');
-          return 100;
-        }
-        return prev + 20;
-      });
-    }, 300);
-  }, [addAuditLog]);
-
-  const applyOptimizationPlan = useCallback((planId: string) => {
-    setDeviceOptimizationPlans(prev =>
-      prev.map(p => (p.id === planId ? { ...p, applied: true, applied_at: new Date().toISOString() } : p))
-    );
-    nmsApi.applyOptimization('plan', planId).catch(e => console.warn('Failed to apply plan:', e));
-
-    const targetPlan = deviceOptimizationPlans.find(p => p.id === planId);
-    if (targetPlan) {
-      addAuditLog(
-        'APPLY_AI_OPTIMIZATION',
-        `Menerapkan rencana optimasi AI "${targetPlan.title}" pada ${targetPlan.device_name}`
-      );
-
-      // Improve simulated metrics
-      setAiSimulation(prev => ({
-        ...prev,
-        current_avg_latency: Math.max(3, prev.current_avg_latency - 4),
-        network_health_score: Math.min(100, prev.network_health_score + 8),
-        current_cpu_peak: Math.max(20, prev.current_cpu_peak - 12),
-      }));
-    }
-  }, [deviceOptimizationPlans, addAuditLog]);
-
-  const applyLanRouteRecommendation = useCallback((routeId: string) => {
-    setLanRoutes(prev =>
-      prev.map(r => (r.id === routeId ? { ...r, status: 'applied' } : r))
-    );
-    nmsApi.applyOptimization('route', routeId).catch(e => console.warn('Failed to apply route:', e));
-
-    const targetRoute = lanRoutes.find(r => r.id === routeId);
-    if (targetRoute) {
-      addAuditLog(
-        'APPLY_LAN_ROUTE',
-        `Menerapkan rekomendasi jalur LAN "${targetRoute.title}" pada ${targetRoute.target_subnet}`
-      );
-
-      setAiSimulation(prev => ({
-        ...prev,
-        current_packet_loss: 0,
-        network_health_score: Math.min(100, prev.network_health_score + 6),
-      }));
-    }
-  }, [lanRoutes, addAuditLog]);
-
   const toggleDashboardWidget = useCallback((key: keyof DashboardWidgetVisibility) => {
     setDashboardWidgets(prev => ({
       ...prev,
       [key]: !prev[key],
     }));
   }, []);
-
-  const updateAiConfig = useCallback((updates: Partial<AiConfig>) => {
-    setAiConfig(prev => {
-      const next = { ...prev, ...updates };
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('nms_ai_config', JSON.stringify(next));
-        } catch {
-          // Ignore
-        }
-      }
-      return next;
-    });
-    addAuditLog('UPDATE_AI_CONFIG', 'Memperbarui parameter konfigurasi & API Key AI Engine');
-    nmsApi.updateAiConfig(updates).catch(e => console.warn('Failed to sync updateAiConfig:', e));
-  }, [addAuditLog]);
-
-  const testAiConnection = useCallback(async (customConfig?: Partial<AiConfig>) => {
-    const activeConfig = { ...aiConfig, ...customConfig };
-    const isLocal = activeConfig.provider === 'local_ollama';
-    const hasKey = !!activeConfig.api_key?.trim();
-
-    if (!isLocal && !hasKey) {
-      setAiConfig(prev => {
-        const next = {
-          ...prev,
-          ...customConfig,
-          connection_status: 'error' as const,
-          last_tested_at: new Date().toISOString(),
-        };
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('nms_ai_config', JSON.stringify(next));
-          } catch {}
-        }
-        return next;
-      });
-      return { success: false, latency: 0, message: 'API Key tidak boleh kosong!' };
-    }
-
-    try {
-      const res = await nmsApi.updateAiConfig(activeConfig);
-      const latency = res?.responseTimeMs || Math.floor(180 + Math.random() * 80);
-      const updatedConfig: AiConfig = {
-        ...activeConfig,
-        connection_status: 'connected',
-        last_tested_at: new Date().toISOString(),
-        response_time_ms: latency,
-      };
-      setAiConfig(updatedConfig);
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('nms_ai_config', JSON.stringify(updatedConfig));
-        } catch {}
-      }
-      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${activeConfig.model} berhasil (${latency}ms)`);
-      return { success: true, latency, message: `Terhubung ke ${activeConfig.model} (${latency}ms)` };
-    } catch {
-      const latency = Math.floor(180 + Math.random() * 80);
-      const updatedConfig: AiConfig = {
-        ...activeConfig,
-        connection_status: 'connected',
-        last_tested_at: new Date().toISOString(),
-        response_time_ms: latency,
-      };
-      setAiConfig(updatedConfig);
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('nms_ai_config', JSON.stringify(updatedConfig));
-        } catch {}
-      }
-      addAuditLog('TEST_AI_CONNECTION', `Uji koneksi model ${activeConfig.model} berhasil (${latency}ms)`);
-      return { success: true, latency, message: `Terhubung ke ${activeConfig.model} (${latency}ms)` };
-    }
-  }, [aiConfig, addAuditLog]);
 
   // Derived live stats
   const totalDevices = devices.length;
@@ -1297,14 +1088,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     discoveredDevices,
     isScanning,
     scanProgress,
-    aiAnomalies,
-    lanRoutes,
-    deviceOptimizationPlans,
-    aiSimulation,
     dashboardWidgets,
-    aiConfig,
-    isAiAnalyzing,
-    aiScanProgress,
     throughputHistory,
     liveStats: {
       totalDevices,
@@ -1336,12 +1120,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     startAutoDiscovery,
     approveDiscoveredDevice,
     ignoreDiscoveredDevice,
-    runAiOptimizationScan,
-    applyOptimizationPlan,
-    applyLanRouteRecommendation,
     toggleDashboardWidget,
-    updateAiConfig,
-    testAiConnection,
     addAuditLog,
     pingDevice,
     syncQueues,
@@ -1364,3 +1143,4 @@ export const useNms = () => {
   }
   return context;
 };
+

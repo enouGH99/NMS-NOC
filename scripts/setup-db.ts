@@ -89,13 +89,6 @@ async function main() {
       ON CONFLICT ("id") DO NOTHING;
     `;
 
-    // 6. Seed AI Config
-    await appSql`
-      INSERT INTO "ai_configs" ("id", "provider", "model", "api_key", "temperature", "max_tokens", "auto_scan_enabled", "auto_scan_interval_minutes", "auto_generate_scripts", "notify_on_anomaly", "connection_status")
-      VALUES ('default_config', 'google_gemini', 'gemini-2.5-flash', 'AIzaSyD-NOC-NMS-DEMO-SECURE-KEY-9948271', 0.2, 4096, true, 15, true, true, 'connected')
-      ON CONFLICT ("id") DO NOTHING;
-    `;
-
     console.log('🎉 Setup and Seeding Complete!');
   } catch (err: any) {
     console.error('❌ Migration / Seed error:', err);

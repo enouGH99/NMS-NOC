@@ -21,8 +21,6 @@ import {
   ChevronRight,
   ShieldCheck,
   ShieldAlert,
-  Sparkles,
-  Zap,
   Radio,
 } from 'lucide-react';
 
@@ -79,16 +77,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Operasional & Analitik',
       items: [
-        {
-          label: 'AI Optimizer (Fase 6)',
-          href: '/optimizer',
-          icon: Sparkles,
-          badge: 'AI Active',
-          badgeVariant: 'info',
-        },
+        { label: 'Auto-Discovery & Topologi', href: '/topology', icon: Network },
         { label: 'Log Perbaikan', href: '/repairs', icon: Wrench },
         { label: 'Laporan SLA', href: '/reports', icon: FileBarChart },
-        { label: 'Auto-Discovery & AI', href: '/topology', icon: Network },
       ],
     },
     {

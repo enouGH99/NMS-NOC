@@ -22,9 +22,6 @@ import * as DiscoveryRoute from '../src/app/api/discovery/route';
 import * as UsersRoute from '../src/app/api/users/route';
 import * as AuditLogsRoute from '../src/app/api/audit-logs/route';
 import * as QueuesRoute from '../src/app/api/queues/route';
-import * as OptimizerRoute from '../src/app/api/optimizer/route';
-import * as OptimizerApplyRoute from '../src/app/api/optimizer/apply/route';
-import * as OptimizerConfigRoute from '../src/app/api/optimizer/config/route';
 
 interface TestResult {
   category: string;
@@ -512,71 +509,6 @@ async function runAllIntegrationTests() {
   });
 
   // ----------------------------------------------------
-  // 13. FASE 6 AI OPTIMIZER & ACTION PLANS API
-  // ----------------------------------------------------
-  await runTest('AI Optimizer API', 'GET /api/optimizer returns anomalies, routes & plans', async () => {
-    const res = await OptimizerRoute.GET();
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(Array.isArray(json.data.anomalies), 'Expected anomalies array');
-    assert(Array.isArray(json.data.lanRoutes), 'Expected lanRoutes array');
-    assert(Array.isArray(json.data.optimizationPlans), 'Expected optimizationPlans array');
-    assert(json.data.config !== undefined, 'Expected config object');
-  });
-
-  await runTest('AI Optimizer API', 'POST /api/optimizer runs AI deep inspection scan', async () => {
-    const res = await OptimizerRoute.POST();
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(typeof json.networkEfficiencyScore === 'number', 'Expected efficiency score');
-  });
-
-  await runTest('AI Optimizer API', 'POST /api/optimizer/apply applies LAN route recommendation', async () => {
-    const req = createRequest('/api/optimizer/apply', 'POST', { type: 'route', id: 'rec-1' });
-    const res = await OptimizerApplyRoute.POST(req);
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(json.type === 'route', 'Expected route type response');
-  });
-
-  await runTest('AI Optimizer API', 'POST /api/optimizer/apply applies device optimization script', async () => {
-    const req = createRequest('/api/optimizer/apply', 'POST', { type: 'plan', id: 'opt-1' });
-    const res = await OptimizerApplyRoute.POST(req);
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(json.type === 'plan', 'Expected plan type response');
-  });
-
-  await runTest('AI Optimizer API', 'GET /api/optimizer/config returns active AI Engine configuration', async () => {
-    const res = await OptimizerConfigRoute.GET();
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(json.data.provider !== undefined, 'Expected provider');
-  });
-
-  await runTest('AI Optimizer API', 'PUT /api/optimizer/config updates and tests AI connection', async () => {
-    const payload = {
-      provider: 'gemini',
-      model: 'gemini-1.5-pro',
-      api_key: 'test-key-sample-12345',
-      temperature: 0.2,
-      max_tokens: 4096,
-      auto_apply: false,
-    };
-    const req = createRequest('/api/optimizer/config', 'PUT', payload);
-    const res = await OptimizerConfigRoute.PUT(req);
-    assert(res.status === 200, `Expected status 200, got ${res.status}`);
-    const json = await res.json();
-    assert(json.success === true, 'Expected success === true');
-    assert(json.data.connectionStatus === 'connected', 'Expected connectionStatus === connected');
-  });
-
-  // ----------------------------------------------------
   // SUMMARY REPORT
   // ----------------------------------------------------
   console.log('\n======================================================');
@@ -601,7 +533,7 @@ async function runAllIntegrationTests() {
       });
     process.exit(1);
   } else {
-    console.log('\n🎉 SEMUA 27 INTEGRATION TESTS BERHASIL DENGAN STATUS 100% PASS!');
+    console.log(`\n🎉 SEMUA ${total} INTEGRATION TESTS BERHASIL DENGAN STATUS 100% PASS!`);
     process.exit(0);
   }
 }

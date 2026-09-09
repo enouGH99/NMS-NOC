@@ -9,7 +9,6 @@ import { QueueTrafficChart } from '@/components/dashboard/QueueTrafficChart';
 import { VpnStatusWidget } from '@/components/dashboard/VpnStatusWidget';
 import { RecentAlertsWidget } from '@/components/dashboard/RecentAlertsWidget';
 import { PingGaugeWidget } from '@/components/dashboard/PingGaugeWidget';
-import { AiInsightWidget } from '@/components/dashboard/AiInsightWidget';
 import { M3Button } from '@/components/m3/M3Button';
 import { M3Dialog } from '@/components/m3/M3Dialog';
 import { M3Switch } from '@/components/m3/M3Switch';
@@ -20,11 +19,7 @@ import {
   XCircle,
   Activity,
   Map,
-  Plus,
-  Wrench,
-  Sparkles,
   SlidersHorizontal,
-  LayoutGrid,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -59,16 +54,6 @@ export default function DashboardPage() {
           >
             Atur Widget
           </M3Button>
-
-          <Link href="/optimizer">
-            <M3Button
-              variant="filled-tonal"
-              size="sm"
-              icon={<Sparkles className="w-4 h-4 text-m3-primary" />}
-            >
-              AI Optimizer
-            </M3Button>
-          </Link>
 
           <Link href="/map">
             <M3Button
@@ -131,16 +116,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* AI Insights Widget (1 col) */}
-        {dashboardWidgets.ai_insights && (
-          <div className={dashboardWidgets.throughput_chart ? 'lg:col-span-1' : 'lg:col-span-3'}>
-            <AiInsightWidget />
-          </div>
-        )}
-
         {/* Core Gateway Hardware & Latency (1 col) */}
         {dashboardWidgets.ping_gauge && (
-          <div className="lg:col-span-1">
+          <div className={dashboardWidgets.throughput_chart ? 'lg:col-span-1' : 'lg:col-span-3'}>
             <PingGaugeWidget />
           </div>
         )}
@@ -184,11 +162,6 @@ export default function DashboardPage() {
                 key: 'throughput_chart' as const,
                 title: 'Grafik Real-time Throughput',
                 desc: 'Visualisasi grafik live trafik Inbound & Outbound Gateway',
-              },
-              {
-                key: 'ai_insights' as const,
-                title: 'AI Optimization Insights (Fase 6)',
-                desc: 'Temuan anomali log MikroTik dan skor efisiensi AI',
               },
               {
                 key: 'ping_gauge' as const,

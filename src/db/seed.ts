@@ -176,22 +176,6 @@ async function seed() {
       },
     ]).onConflictDoNothing();
 
-    // 5. AI Optimizer Config
-    console.log('Inserting AI Config...');
-    await db.insert(schema.aiConfigs).values({
-      id: 'default_config',
-      provider: 'google_gemini',
-      model: 'gemini-2.5-flash',
-      apiKey: 'AIzaSyD-NOC-NMS-DEMO-SECURE-KEY-9948271',
-      temperature: 0.2,
-      maxTokens: 4096,
-      autoScanEnabled: true,
-      autoScanIntervalMinutes: 15,
-      autoGenerateScripts: true,
-      notifyOnAnomaly: true,
-      connectionStatus: 'connected',
-    }).onConflictDoNothing();
-
     console.log('✅ NMS Database Seeding Completed Successfully!');
   } catch (error) {
     console.error('❌ Error during seeding:', error);
