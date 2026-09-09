@@ -274,24 +274,11 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         let loadedDevices: Device[] = [];
-        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value) && devicesRes.value.length > 0) {
+        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
           loadedDevices = devicesRes.value;
           setDevices(devicesRes.value);
           if (typeof window !== 'undefined') {
             try { localStorage.setItem('nms_devices', JSON.stringify(devicesRes.value)); } catch {}
-          }
-        } else {
-          if (typeof window !== 'undefined') {
-            try {
-              const saved = localStorage.getItem('nms_devices');
-              if (saved) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  loadedDevices = parsed;
-                  setDevices(parsed);
-                }
-              }
-            } catch {}
           }
         }
 
@@ -321,24 +308,11 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
           setQueues(queuesRes.value);
         }
-        if (interfacesRes.status === 'fulfilled' && Array.isArray(interfacesRes.value) && interfacesRes.value.length > 0) {
+        if (interfacesRes.status === 'fulfilled' && Array.isArray(interfacesRes.value)) {
           setInterfaces(interfacesRes.value);
-        } else if (loadedDevices.length > 0) {
-          // Ensure all devices have interfaces generated
-          setInterfaces(prev => {
-            let combined = [...prev];
-            for (const dev of loadedDevices) {
-              const hasIfaces = combined.some(i => i.device_id === dev.id);
-              if (!hasIfaces) {
-                const autoGen = generateDefaultInterfaces(dev.id, dev.type, dev.mac_address, dev.name);
-                combined = [...combined, ...autoGen];
-              }
-            }
-            if (typeof window !== 'undefined') {
-              try { localStorage.setItem('nms_interfaces', JSON.stringify(combined)); } catch {}
-            }
-            return combined;
-          });
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('nms_interfaces', JSON.stringify(interfacesRes.value)); } catch {}
+          }
         }
         if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
           setUsers(usersRes.value);
