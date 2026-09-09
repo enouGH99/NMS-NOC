@@ -21,10 +21,10 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
   downloadRate,
   uploadRate,
   maxLimitStr,
-  height = 54,
+  height = 48,
   unitMode = 'auto',
   showLegend = true,
-  showBadges = true,
+  showBadges = false,
   compact = false,
 }) => {
   // Parse Max Limit (e.g. 100 from "100M/100M")
@@ -34,8 +34,7 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
   const [history, setHistory] = useState<{ dl: number; ul: number }[]>(() => {
     const initial: { dl: number; ul: number }[] = [];
     for (let i = 0; i < 16; i++) {
-      // Seed with natural gentle variation around current rate
-      const variance = (Math.sin(i * 0.5) * 0.15 + 1);
+      const variance = Math.sin(i * 0.5) * 0.15 + 1;
       initial.push({
         dl: Math.max(0, Number((downloadRate * variance).toFixed(2))),
         ul: Math.max(0, Number((uploadRate * variance).toFixed(2))),
@@ -55,27 +54,23 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
       setHistory((prev) => {
         const baseDl = latestDlRef.current;
         const baseUl = latestUlRef.current;
-        // Minor natural packet burst simulation
         const dlJitter = baseDl > 0 ? (Math.random() * 0.12 - 0.06) * baseDl : 0;
         const ulJitter = baseUl > 0 ? (Math.random() * 0.12 - 0.06) * baseUl : 0;
 
         const nextDl = Math.max(0, Number((baseDl + dlJitter).toFixed(2)));
         const nextUl = Math.max(0, Number((baseUl + ulJitter).toFixed(2)));
 
-        const nextHistory = [...prev.slice(1), { dl: nextDl, ul: nextUl }];
-        return nextHistory;
+        return [...prev.slice(1), { dl: nextDl, ul: nextUl }];
       });
     }, 1500);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Compute SVG viewBox and coordinates
-  const svgWidth = compact ? 180 : 260;
-  const svgHeight = compact ? (height || 36) : height;
+  const svgWidth = 260;
+  const svgHeight = compact ? 32 : height;
   const padding = compact ? 2 : 4;
 
-  // Find max value in history or max limit for scaling
   const peakVal = Math.max(...history.map((p) => Math.max(p.dl, p.ul)), maxLimitNum * 0.2, 1);
   const scaleY = (val: number) => {
     const norm = Math.min(val / peakVal, 1);
@@ -84,12 +79,12 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
 
   const stepX = svgWidth / (history.length - 1);
 
-  // Generate SVG Path for Download (Rx)
+  // Download (Rx)
   const dlPoints = history.map((p, i) => `${i * stepX},${scaleY(p.dl)}`);
   const dlPath = `M ${dlPoints.join(' L ')}`;
   const dlAreaPath = `${dlPath} L ${svgWidth},${svgHeight} L 0,${svgHeight} Z`;
 
-  // Generate SVG Path for Upload (Tx)
+  // Upload (Tx)
   const ulPoints = history.map((p, i) => `${i * stepX},${scaleY(p.ul)}`);
   const ulPath = `M ${ulPoints.join(' L ')}`;
 
@@ -97,21 +92,26 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
   const gradDlId = `grad-dl-${safeQueueId}`;
   const gradUlId = `grad-ul-${safeQueueId}`;
 
-  if (compact) {
-    return (
-      <div className="w-full relative overflow-hidden rounded-m3-lg bg-m3-surface-container-lowest/90 border border-m3-outline-variant/20 p-1">
+  return (
+    <div className="w-full space-y-1">
+      {/* Mini SVG Chart */}
+      <div
+        className={`w-full rounded-m3-lg bg-m3-surface-container-lowest/90 border border-m3-outline-variant/20 p-1 relative overflow-hidden group shadow-inner ${
+          compact ? 'h-8' : 'h-12'
+        }`}
+      >
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-9 overflow-visible block"
+          className="w-full h-full overflow-visible"
           preserveAspectRatio="none"
         >
           <defs>
             <linearGradient id={gradDlId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
               <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
             </linearGradient>
             <linearGradient id={gradUlId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0284c7" stopOpacity="0.25" />
+              <stop offset="0%" stopColor="#0284c7" stopOpacity="0.2" />
               <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
             </linearGradient>
           </defs>
@@ -122,33 +122,16 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
             y1={scaleY(peakVal * 0.5)}
             x2={svgWidth}
             y2={scaleY(peakVal * 0.5)}
-            stroke="rgba(140, 145, 153, 0.12)"
+            stroke="rgba(140, 145, 153, 0.15)"
             strokeDasharray="2 2"
           />
 
-          {/* Download Area & Stroke */}
+          {/* Paths */}
           <path d={dlAreaPath} fill={`url(#${gradDlId})`} />
-          <path
-            d={dlPath}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path d={dlPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={ulPath} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="3 2" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Upload Stroke */}
-          <path
-            d={ulPath}
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="1.4"
-            strokeDasharray="3 2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Current Live Dots */}
+          {/* Live Dots */}
           <circle
             cx={svgWidth}
             cy={scaleY(history[history.length - 1]?.dl || 0)}
@@ -165,7 +148,7 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
         </svg>
 
         {showBadges && (
-          <div className="absolute top-1 left-1.5 flex items-center gap-1.5 text-[9px] font-mono pointer-events-none">
+          <div className="absolute top-0.5 left-1.5 flex flex-wrap items-center gap-1 text-[9px] font-mono pointer-events-none">
             <span className="text-emerald-500 font-bold bg-emerald-500/10 px-1 rounded">
               ↓ {formatThroughput(downloadRate, unitMode)}
             </span>
@@ -175,112 +158,23 @@ export const QueueTrafficSparkline: React.FC<QueueTrafficSparklineProps> = ({
           </div>
         )}
       </div>
-    );
-  }
-
-  return (
-    <div className="w-full space-y-1.5">
-      {/* Mini SVG Chart */}
-      <div
-        className="w-full rounded-m3-xl bg-m3-surface-container-lowest/80 border border-m3-outline-variant/20 p-1.5 relative overflow-hidden group shadow-inner"
-        style={{ height: `${svgHeight + 12}px` }}
-      >
-        <svg
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="w-full h-full overflow-visible"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id={gradDlId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-            </linearGradient>
-            <linearGradient id={gradUlId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0284c7" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid Guideline */}
-          <line
-            x1="0"
-            y1={scaleY(peakVal * 0.5)}
-            x2={svgWidth}
-            y2={scaleY(peakVal * 0.5)}
-            stroke="rgba(140, 145, 153, 0.15)"
-            strokeDasharray="2 2"
-          />
-
-          {/* Download Area & Stroke (Emerald Green) */}
-          <path d={dlAreaPath} fill={`url(#${gradDlId})`} />
-          <path
-            d={dlPath}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Upload Stroke (Sky Blue) */}
-          <path
-            d={ulPath}
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="1.8"
-            strokeDasharray="3 2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Live Current Head Dots */}
-          <circle
-            cx={svgWidth}
-            cy={scaleY(history[history.length - 1]?.dl || 0)}
-            r="3.5"
-            fill="#10b981"
-            className="animate-pulse"
-          />
-          <circle
-            cx={svgWidth}
-            cy={scaleY(history[history.length - 1]?.ul || 0)}
-            r="2.5"
-            fill="#38bdf8"
-          />
-        </svg>
-
-        {/* Live Sparkline Badges on Top of Graph */}
-        {showBadges && (
-          <div className="absolute top-1 left-2 flex items-center gap-2 text-[10px] font-mono pointer-events-none">
-            <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded">
-              <ArrowDownLeft className="w-2.5 h-2.5" />
-              Rx: {formatThroughput(downloadRate, unitMode)}
-            </span>
-            <span className="flex items-center gap-0.5 text-sky-600 dark:text-sky-400 font-bold bg-sky-500/10 px-1.5 py-0.2 rounded">
-              <ArrowUpRight className="w-2.5 h-2.5" />
-              Tx: {formatThroughput(uploadRate, unitMode)}
-            </span>
-          </div>
-        )}
-      </div>
 
       {/* Optional Bottom Mini Legend */}
-      {showLegend && (
+      {showLegend && !compact && (
         <div className="flex items-center justify-between text-[10px] text-m3-on-surface-variant font-mono px-0.5">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span>Download (Rx)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span>Rx (DL)</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
-              <span>Upload (Tx)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block" />
+              <span>Tx (UL)</span>
             </span>
           </div>
-          <span className="text-[10px] opacity-75">Maks: {maxLimitStr}</span>
+          <span className="text-[10px] opacity-75 truncate">Maks: {maxLimitStr}</span>
         </div>
       )}
     </div>
   );
 };
-

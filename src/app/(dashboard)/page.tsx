@@ -123,9 +123,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Simple Queue Bandwidth (1 col) */}
+        {/* Simple Queue Bandwidth (2 cols for rich Ethernet table & graphs) */}
         {dashboardWidgets.simple_queues && (
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-2">
             <QueueTrafficChart />
           </div>
         )}
@@ -137,9 +137,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Recent Incidents Feed (1 col) */}
+        {/* Recent Incidents Feed (Full Width 3 cols) */}
         {dashboardWidgets.recent_alerts && (
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-3">
             <RecentAlertsWidget />
           </div>
         )}

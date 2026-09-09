@@ -38,61 +38,66 @@ export const RecentAlertsWidget: React.FC = () => {
         </Link>
       </div>
 
-      <div className="pt-4 space-y-3 flex-1 overflow-y-auto">
+      <div className="pt-4 flex-1 overflow-y-auto">
         {unresolvedAlerts.length === 0 ? (
-          <div className="text-center py-8 text-m3-on-surface-variant">
-            <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-            <p className="text-xs font-semibold">Tidak ada insiden aktif</p>
+          <div className="text-center py-6 text-m3-on-surface-variant flex flex-col sm:flex-row items-center justify-center gap-3 bg-m3-surface-container/50 rounded-m3-xl p-4 border border-m3-outline-variant/20">
+            <CheckCircle2 className="w-7 h-7 text-emerald-500 shrink-0" />
+            <div className="text-center sm:text-left">
+              <p className="text-xs font-bold text-m3-on-surface">Semua Sistem Beroperasi Normal</p>
+              <p className="text-[11px] text-m3-on-surface-variant">Tidak ada insiden atau gangguan aktif yang memerlukan tindak lanjut.</p>
+            </div>
           </div>
         ) : (
-          unresolvedAlerts.slice(0, 4).map((alert) => {
-            const badge = getSeverityM3Badge(alert.severity);
-            return (
-              <div
-                key={alert.id}
-                className="p-3.5 rounded-m3-xl bg-m3-surface-container border border-m3-outline-variant/30 space-y-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${badge.bg} ${badge.text}`}
-                    >
-                      {badge.label}
-                    </span>
-                    <span className="text-xs font-bold text-m3-on-surface truncate">
-                      {alert.device_name}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {unresolvedAlerts.slice(0, 4).map((alert) => {
+              const badge = getSeverityM3Badge(alert.severity);
+              return (
+                <div
+                  key={alert.id}
+                  className="p-3.5 rounded-m3-xl bg-m3-surface-container border border-m3-outline-variant/30 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${badge.bg} ${badge.text}`}
+                      >
+                        {badge.label}
+                      </span>
+                      <span className="text-xs font-bold text-m3-on-surface truncate">
+                        {alert.device_name}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-m3-on-surface-variant shrink-0 font-mono">
+                      {formatTimeAgo(alert.triggered_at)}
                     </span>
                   </div>
-                  <span className="text-[10px] text-m3-on-surface-variant shrink-0">
-                    {formatTimeAgo(alert.triggered_at)}
-                  </span>
-                </div>
 
-                <p className="text-xs text-m3-on-surface-variant leading-relaxed">
-                  {alert.message}
-                </p>
+                  <p className="text-xs text-m3-on-surface-variant leading-relaxed">
+                    {alert.message}
+                  </p>
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] font-mono text-m3-on-surface-variant">
-                    {alert.ip_address}
-                  </span>
-                  {!alert.acknowledged ? (
-                    <M3Button
-                      size="sm"
-                      variant="filled-tonal"
-                      onClick={() => acknowledgeAlert(alert.id)}
-                    >
-                      Tandai Diterima
-                    </M3Button>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                      ✓ Diterima ({alert.acknowledged_by})
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] font-mono text-m3-on-surface-variant">
+                      {alert.ip_address}
                     </span>
-                  )}
+                    {!alert.acknowledged ? (
+                      <M3Button
+                        size="sm"
+                        variant="filled-tonal"
+                        onClick={() => acknowledgeAlert(alert.id)}
+                      >
+                        Tandai Diterima
+                      </M3Button>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Diterima ({alert.acknowledged_by})
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
     </M3Card>

@@ -10,8 +10,6 @@ import { QueueTrafficSparkline } from './QueueTrafficSparkline';
 import {
   SlidersHorizontal,
   AlertCircle,
-  ArrowDown,
-  ArrowUp,
   ArrowDownLeft,
   ArrowUpRight,
   RefreshCw,
@@ -22,7 +20,7 @@ import {
   ListFilter,
   CheckCircle2,
 } from 'lucide-react';
-import { formatMbps, formatThroughput } from '@/lib/utils';
+import { formatThroughput } from '@/lib/utils';
 
 type ThroughputUnitMode = 'auto' | 'mbps' | 'kbps' | 'bps';
 
@@ -75,30 +73,30 @@ export const QueueTrafficChart: React.FC = () => {
   });
 
   return (
-    <M3Card className="p-4 sm:p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs space-y-4">
+    <M3Card className="p-4 sm:p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs space-y-4 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-m3-outline-variant/30">
-        <div className="flex items-center gap-2.5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-m3-outline-variant/30">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="p-2 rounded-m3-xl bg-m3-secondary-container text-m3-on-secondary-container shrink-0">
             <SlidersHorizontal className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-extrabold text-m3-on-surface tracking-tight">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm sm:text-base font-extrabold text-m3-on-surface tracking-tight truncate">
                 Manajemen Bandwidth Simple Queue
               </h3>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-m3-surface-container-highest text-m3-primary font-mono font-bold border border-m3-outline-variant/30">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-m3-surface-container-highest text-m3-primary font-mono font-bold border border-m3-outline-variant/30 shrink-0">
                 {queues.length} Antrean
               </span>
             </div>
-            <p className="text-xs text-m3-on-surface-variant">
-              Utilisasi, limit kuota, dan grafik trafik Rx/Tx live per divisi MikroTik
+            <p className="text-[11px] sm:text-xs text-m3-on-surface-variant truncate">
+              Utilisasi & batasan trafik per antrean MikroTik
             </p>
           </div>
         </div>
 
         {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 self-start md:self-auto shrink-0">
           {/* View Mode Toggle */}
           <div className="flex items-center p-0.5 rounded-m3-full bg-m3-surface-container-highest border border-m3-outline-variant/30">
             <button
@@ -112,7 +110,7 @@ export const QueueTrafficChart: React.FC = () => {
               }`}
             >
               <ListFilter className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tabel</span>
+              <span>Tabel</span>
             </button>
             <button
               type="button"
@@ -125,7 +123,7 @@ export const QueueTrafficChart: React.FC = () => {
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Kartu</span>
+              <span>Kartu</span>
             </button>
           </div>
 
@@ -133,7 +131,7 @@ export const QueueTrafficChart: React.FC = () => {
             onClick={handleSync}
             disabled={isSyncing}
             title="Segarkan data Simple Queue langsung dari MikroTik (SNMP)"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-m3-full bg-m3-surface-container-highest hover:bg-m3-surface-container-highest/80 text-m3-on-surface text-xs font-bold transition-colors border border-m3-outline-variant/30 disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-m3-full bg-m3-surface-container-highest hover:bg-m3-surface-container-highest/80 text-m3-on-surface text-xs font-bold transition-colors border border-m3-outline-variant/30 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-m3-primary' : ''}`} />
             <span className="hidden sm:inline">Segarkan</span>
@@ -142,7 +140,7 @@ export const QueueTrafficChart: React.FC = () => {
           <button
             onClick={() => setAddModalOpen(true)}
             title="Tambah Simple Queue Manual"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-m3-full bg-m3-primary/15 hover:bg-m3-primary/25 text-m3-primary text-xs font-bold transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-m3-full bg-m3-primary/15 hover:bg-m3-primary/25 text-m3-primary text-xs font-bold transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Tambah</span>
@@ -151,10 +149,10 @@ export const QueueTrafficChart: React.FC = () => {
       </div>
 
       {/* Control Bar: Unit Mode Switcher & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        {/* Unit Selector (Winbox / Mbps / kbps / bps) */}
-        <div className="flex items-center gap-1 p-1 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/20 self-start">
-          <span className="text-[10px] font-bold text-m3-on-surface-variant px-1.5 flex items-center gap-1 font-mono">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+        {/* Unit Selector */}
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/20">
+          <span className="text-[10px] font-bold text-m3-on-surface-variant px-1.5 flex items-center gap-1 font-mono shrink-0">
             <Gauge className="w-3 h-3 text-m3-primary" />
             Satuan:
           </span>
@@ -163,7 +161,7 @@ export const QueueTrafficChart: React.FC = () => {
               key={mode}
               type="button"
               onClick={() => setUnitMode(mode)}
-              className={`px-2 py-0.5 rounded-m3-md text-[11px] font-bold font-mono transition-all ${
+              className={`px-2 py-0.5 rounded-m3-md text-[10px] sm:text-[11px] font-bold font-mono transition-all ${
                 unitMode === mode
                   ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
                   : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container'
@@ -175,11 +173,11 @@ export const QueueTrafficChart: React.FC = () => {
         </div>
 
         {/* Search Field */}
-        <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+        <div className="relative w-full md:w-60 shrink-0">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-m3-on-surface-variant" />
           <input
             type="text"
-            placeholder="Cari queue atau subnet target..."
+            placeholder="Cari queue / subnet..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1 rounded-m3-lg bg-m3-surface-container-high border border-m3-outline-variant/30 text-xs text-m3-on-surface focus:outline-hidden focus:border-m3-primary font-mono placeholder:font-sans"
@@ -214,15 +212,15 @@ export const QueueTrafficChart: React.FC = () => {
         /* ================== ETHERNET-STYLE TABLE VIEW ================== */
         <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[700px]">
+            <table className="w-full text-left text-xs min-w-[720px]">
               <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3">Nama Antrean</th>
                   <th className="py-2.5 px-3">Target Subnet</th>
                   <th className="py-2.5 px-3">Max Limit</th>
-                  <th className="py-2.5 px-3">Trafik Tx (Upload)</th>
-                  <th className="py-2.5 px-3">Trafik Rx (Download)</th>
+                  <th className="py-2.5 px-3">Trafik Tx (UL)</th>
+                  <th className="py-2.5 px-3">Trafik Rx (DL)</th>
                   <th className="py-2.5 px-3 w-48">Grafik Trafik Live</th>
                   <th className="py-2.5 px-3">Utilisasi</th>
                   <th className="py-2.5 px-3 text-right">Status</th>
@@ -236,14 +234,8 @@ export const QueueTrafficChart: React.FC = () => {
                   const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
 
                   let barColor = 'bg-emerald-500';
-                  let badgeColor = 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
-                  if (usagePercent > 80) {
-                    barColor = 'bg-rose-500';
-                    badgeColor = 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/20';
-                  } else if (usagePercent > 60) {
-                    barColor = 'bg-amber-500';
-                    badgeColor = 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20';
-                  }
+                  if (usagePercent > 80) barColor = 'bg-rose-500';
+                  else if (usagePercent > 60) barColor = 'bg-amber-500';
 
                   return (
                     <tr
@@ -251,59 +243,59 @@ export const QueueTrafficChart: React.FC = () => {
                       className="hover:bg-m3-surface-container-high/40 transition-colors"
                     >
                       {/* Flag / Index */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-m3-on-surface-variant text-[11px]">
+                      <td className="py-2 px-3 text-center font-mono font-bold text-m3-on-surface-variant text-[11px]">
                         <span className="px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-500 font-mono text-[10px]">
                           {String(idx + 1).padStart(2, '0')}
                         </span>
                       </td>
 
                       {/* Name */}
-                      <td className="py-2.5 px-3 font-bold font-mono text-m3-on-surface">
+                      <td className="py-2 px-3 font-bold font-mono text-m3-on-surface">
                         <div className="flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                          <span>{q.name}</span>
+                          <span className="truncate max-w-[140px]">{q.name}</span>
                         </div>
                       </td>
 
                       {/* Target Subnet */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-m3-on-surface-variant">
+                      <td className="py-2 px-3 font-mono text-[11px] text-m3-on-surface-variant">
                         <span className="bg-m3-surface-container-highest px-2 py-0.5 rounded-full border border-m3-outline-variant/30">
                           {q.target}
                         </span>
                       </td>
 
                       {/* Max Limit */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-amber-600 dark:text-amber-300 text-[11px]">
+                      <td className="py-2 px-3 font-mono font-bold text-amber-600 dark:text-amber-300 text-[11px]">
                         <span className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
                           {q.max_limit}
                         </span>
                       </td>
 
                       {/* Tx Upload */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
+                      <td className="py-2 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
                         <div className="flex items-center gap-1">
-                          <ArrowUpRight className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                          <ArrowUpRight className="w-3 h-3 text-sky-500 shrink-0" />
                           <span>{formatThroughput(currentUl, unitMode)}</span>
                         </div>
                       </td>
 
                       {/* Rx Download */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      <td className="py-2 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
                         <div className="flex items-center gap-1">
-                          <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <ArrowDownLeft className="w-3 h-3 text-emerald-500 shrink-0" />
                           <span>{formatThroughput(currentDl, unitMode)}</span>
                         </div>
                       </td>
 
                       {/* Realtime Waveform Sparkline */}
-                      <td className="py-2.5 px-3 w-48">
+                      <td className="py-2 px-3 w-48">
                         <div className="w-44">
                           <QueueTrafficSparkline
                             queueId={q.id}
                             downloadRate={currentDl}
                             uploadRate={currentUl}
                             maxLimitStr={q.max_limit}
-                            height={32}
+                            height={28}
                             unitMode={unitMode}
                             compact={true}
                             showBadges={false}
@@ -312,7 +304,7 @@ export const QueueTrafficChart: React.FC = () => {
                       </td>
 
                       {/* Usage progress bar */}
-                      <td className="py-2.5 px-3 min-w-[100px]">
+                      <td className="py-2 px-3 min-w-[90px]">
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[10px] font-mono font-bold">
                             <span className={usagePercent > 80 ? 'text-rose-500' : 'text-m3-on-surface'}>
@@ -329,7 +321,7 @@ export const QueueTrafficChart: React.FC = () => {
                       </td>
 
                       {/* Drop / Status */}
-                      <td className="py-2.5 px-3 text-right">
+                      <td className="py-2 px-3 text-right">
                         {q.dropped > 0 ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full">
                             <AlertCircle className="w-3 h-3" />
@@ -351,7 +343,7 @@ export const QueueTrafficChart: React.FC = () => {
         </div>
       ) : (
         /* ================== CARD VIEW WITH SPARKLINE ================== */
-        <div className="space-y-3.5 flex-1 overflow-y-auto pr-0.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 overflow-y-auto pr-0.5">
           {filteredQueues.map((q, idx) => {
             const maxNum = parseInt(q.max_limit.split('/')[1] || q.max_limit.replace(/[^0-9]/g, '') || '100', 10) || 100;
             const currentDl = q.current_rate.download;
@@ -371,24 +363,37 @@ export const QueueTrafficChart: React.FC = () => {
             return (
               <div
                 key={q.id}
-                className="p-3.5 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/20 hover:border-m3-outline-variant/50 transition-colors space-y-3 shadow-2xs"
+                className="p-3.5 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/20 hover:border-m3-outline-variant/50 transition-colors space-y-2.5 shadow-2xs"
               >
                 {/* Row 1: Name & Subnet Target */}
                 <div className="flex flex-wrap items-center justify-between gap-1.5">
-                  <div className="font-bold text-xs sm:text-sm text-m3-on-surface flex items-center gap-1.5">
+                  <div className="font-bold text-xs sm:text-sm text-m3-on-surface flex items-center gap-1.5 truncate">
                     <span className="text-m3-on-surface-variant font-mono text-[11px] font-semibold">
                       {String(idx + 1).padStart(2, '0')}.
                     </span>
-                    <span>{q.name}</span>
+                    <span className="truncate">{q.name}</span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <span className="font-mono text-[10px] text-m3-on-surface-variant bg-m3-surface-container-highest px-2 py-0.5 rounded-full border border-m3-outline-variant/30">
                       {q.target}
                     </span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
+                    <span className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
                       {usagePercent}% Utilisasi
                     </span>
+                  </div>
+                </div>
+
+                {/* Row 2: Live Bitrate Values (Clear & Uncramped) */}
+                <div className="flex items-center justify-between gap-2 text-xs font-mono pt-0.5">
+                  <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                    <ArrowDownLeft className="w-3.5 h-3.5" />
+                    <span>Rx: {formatThroughput(currentDl, unitMode)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded-md">
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span>Tx: {formatThroughput(currentUl, unitMode)}</span>
                   </div>
                 </div>
 
@@ -399,10 +404,10 @@ export const QueueTrafficChart: React.FC = () => {
                     downloadRate={currentDl}
                     uploadRate={currentUl}
                     maxLimitStr={q.max_limit}
-                    height={52}
+                    height={44}
                     unitMode={unitMode}
                     showLegend={true}
-                    showBadges={true}
+                    showBadges={false}
                   />
                 </div>
 
@@ -424,12 +429,12 @@ export const QueueTrafficChart: React.FC = () => {
                   {q.dropped > 0 ? (
                     <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold font-sans">
                       <AlertCircle className="w-3 h-3" />
-                      <span>{q.dropped} packet drops</span>
+                      <span>{q.dropped} drops</span>
                     </div>
                   ) : (
                     <span className="text-emerald-600 dark:text-emerald-400 font-sans font-medium flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      Antrean Lancar (0 drop)
+                      Antrean Lancar
                     </span>
                   )}
                 </div>
