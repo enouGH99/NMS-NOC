@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -16,6 +16,12 @@ import { M3Card } from '../m3/M3Card';
 import { TrendingUp, AlertTriangle } from 'lucide-react';
 
 export const CapacityPlanningChart: React.FC = () => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <M3Card className="p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-m3-outline-variant/30">
@@ -35,50 +41,56 @@ export const CapacityPlanningChart: React.FC = () => {
         </div>
       </div>
 
-      <div className="h-72 w-full pt-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={initialCapacityData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(140, 145, 153, 0.15)" />
-            <XAxis dataKey="date" stroke="#8c9199" fontSize={11} />
-            <YAxis stroke="#8c9199" fontSize={11} tickFormatter={(v) => `${v}M`} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'rgba(27, 32, 36, 0.95)',
-                borderRadius: '16px',
-                border: '1px solid rgba(140, 145, 153, 0.3)',
-                fontSize: '12px',
-                color: '#dfe3e8',
-              }}
-              formatter={(value: any, name: any) => [
-                `${value} Mbps`,
-                name === 'bandwidth_used_mbps' ? 'Penggunaan Bandwidth' : 'Kapasitas Kontrak',
-              ]}
-            />
-            <Legend
-              verticalAlign="top"
-              align="right"
-              wrapperStyle={{ fontSize: '11px', paddingBottom: '8px' }}
-            />
-            <Line
-              type="monotone"
-              dataKey="bandwidth_used_mbps"
-              name="Penggunaan Bandwidth"
-              stroke="#38bdf8"
-              strokeWidth={3}
-              dot={{ r: 4 }}
-              activeDot={{ r: 7 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="bandwidth_capacity_mbps"
-              name="Kapasitas Kontrak (500M)"
-              stroke="#f43f5e"
-              strokeWidth={2}
-              strokeDasharray="5 5"
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+      <div className="h-72 w-full pt-2 min-h-[280px]">
+        {isMounted ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={initialCapacityData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(140, 145, 153, 0.15)" />
+              <XAxis dataKey="date" stroke="#8c9199" fontSize={11} />
+              <YAxis stroke="#8c9199" fontSize={11} tickFormatter={(v) => `${v}M`} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'rgba(27, 32, 36, 0.95)',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(140, 145, 153, 0.3)',
+                  fontSize: '12px',
+                  color: '#dfe3e8',
+                }}
+                formatter={(value: any, name: any) => [
+                  `${value} Mbps`,
+                  name === 'bandwidth_used_mbps' ? 'Penggunaan Bandwidth' : 'Kapasitas Kontrak',
+                ]}
+              />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                wrapperStyle={{ fontSize: '11px', paddingBottom: '8px' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="bandwidth_used_mbps"
+                name="Penggunaan Bandwidth"
+                stroke="#38bdf8"
+                strokeWidth={3}
+                dot={{ r: 4 }}
+                activeDot={{ r: 7 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="bandwidth_capacity_mbps"
+                name="Kapasitas Kontrak (500M)"
+                stroke="#f43f5e"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-m3-on-surface-variant">
+            Memuat grafik kapasitas...
+          </div>
+        )}
       </div>
     </M3Card>
   );

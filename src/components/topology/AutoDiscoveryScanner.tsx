@@ -5,7 +5,7 @@ import { useNms } from '@/lib/store';
 import { M3Card } from '../m3/M3Card';
 import { M3Button } from '../m3/M3Button';
 import { M3TextField } from '../m3/M3TextField';
-import { Radio, Plus, Check, ShieldCheck, Search } from 'lucide-react';
+import { Radio, Plus, Check, ShieldCheck, Search, HelpCircle, Network } from 'lucide-react';
 
 export const AutoDiscoveryScanner: React.FC = () => {
   const {
@@ -17,7 +17,7 @@ export const AutoDiscoveryScanner: React.FC = () => {
     ignoreDiscoveredDevice,
   } = useNms();
 
-  const [subnet, setSubnet] = useState('192.168.1.0/24');
+  const [subnet, setSubnet] = useState('192.168.3.0/24');
 
   return (
     <M3Card className="p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-6">
@@ -35,7 +35,7 @@ export const AutoDiscoveryScanner: React.FC = () => {
         <div className="flex items-center gap-2">
           <div className="w-48">
             <M3TextField
-              placeholder="192.168.1.0/24"
+              placeholder="192.168.3.0/24"
               value={subnet}
               onChange={(e) => setSubnet(e.target.value)}
             />
@@ -75,69 +75,75 @@ export const AutoDiscoveryScanner: React.FC = () => {
 
         {/* Mobile Cards */}
         <div className="space-y-3 block md:hidden">
-          {discoveredDevices.map((item) => {
-            const isApproved = item.status === 'approved';
-            const isIgnored = item.status === 'ignored';
+          {discoveredDevices.length === 0 ? (
+            <div className="p-4 rounded-m3-2xl bg-m3-surface-container-high/40 border border-m3-outline-variant/20 text-center text-xs text-m3-on-surface-variant">
+              Belum ada perangkat yang ditemukan. Klik <strong>Mulai Scan Subnet</strong> untuk memindai jaringan.
+            </div>
+          ) : (
+            discoveredDevices.map((item) => {
+              const isApproved = item.status === 'approved';
+              const isIgnored = item.status === 'ignored';
 
-            return (
-              <div
-                key={item.id}
-                className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-3 text-xs"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h5 className="font-bold text-sm text-m3-on-surface">{item.suggested_name}</h5>
-                    <div className="text-[11px] text-m3-on-surface-variant font-mono mt-0.5">
-                      {item.ip} • {item.mac}
+              return (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-3 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h5 className="font-bold text-sm text-m3-on-surface">{item.suggested_name}</h5>
+                      <div className="text-[11px] text-m3-on-surface-variant font-mono mt-0.5">
+                        {item.ip} • {item.mac}
+                      </div>
                     </div>
+
+                    {item.snmp_detected ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold shrink-0">
+                        <ShieldCheck className="w-3 h-3" /> SNMP
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-m3-surface-container-highest text-m3-on-surface-variant shrink-0">
+                        ICMP Only
+                      </span>
+                    )}
                   </div>
 
-                  {item.snmp_detected ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold shrink-0">
-                      <ShieldCheck className="w-3 h-3" /> SNMP
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-m3-surface-container-highest text-m3-on-surface-variant shrink-0">
-                      ICMP Only
-                    </span>
-                  )}
-                </div>
+                  <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant pt-1 border-t border-m3-outline-variant/20">
+                    <span>Vendor: <strong>{item.vendor}</strong></span>
+                    <span className="font-mono">Respon: <strong>{item.response_time} ms</strong></span>
+                  </div>
 
-                <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant pt-1 border-t border-m3-outline-variant/20">
-                  <span>Vendor: <strong>{item.vendor}</strong></span>
-                  <span className="font-mono">Respon: <strong>{item.response_time} ms</strong></span>
+                  <div className="pt-2 border-t border-m3-outline-variant/20 flex items-center justify-end gap-2">
+                    {isApproved ? (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                        <Check className="w-3.5 h-3.5" /> Ditambahkan
+                      </span>
+                    ) : isIgnored ? (
+                      <span className="text-xs text-m3-on-surface-variant italic">Diabaikan</span>
+                    ) : (
+                      <>
+                        <M3Button
+                          size="sm"
+                          variant="text"
+                          onClick={() => ignoreDiscoveredDevice(item.id)}
+                        >
+                          Abaikan
+                        </M3Button>
+                        <M3Button
+                          size="sm"
+                          variant="filled-tonal"
+                          onClick={() => approveDiscoveredDevice(item.id)}
+                          icon={<Plus className="w-3.5 h-3.5" />}
+                        >
+                          Setujui & Pantau
+                        </M3Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-
-                <div className="pt-2 border-t border-m3-outline-variant/20 flex items-center justify-end gap-2">
-                  {isApproved ? (
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                      <Check className="w-3.5 h-3.5" /> Ditambahkan
-                    </span>
-                  ) : isIgnored ? (
-                    <span className="text-xs text-m3-on-surface-variant italic">Diabaikan</span>
-                  ) : (
-                    <>
-                      <M3Button
-                        size="sm"
-                        variant="text"
-                        onClick={() => ignoreDiscoveredDevice(item.id)}
-                      >
-                        Abaikan
-                      </M3Button>
-                      <M3Button
-                        size="sm"
-                        variant="filled-tonal"
-                        onClick={() => approveDiscoveredDevice(item.id)}
-                        icon={<Plus className="w-3.5 h-3.5" />}
-                      >
-                        Setujui & Pantau
-                      </M3Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Desktop Table */}
@@ -154,68 +160,82 @@ export const AutoDiscoveryScanner: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-m3-outline-variant/20">
-                {discoveredDevices.map((item) => {
-                  const isApproved = item.status === 'approved';
-                  const isIgnored = item.status === 'ignored';
+                {discoveredDevices.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-m3-on-surface-variant text-xs">
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <Network className="w-6 h-6 text-m3-on-surface-variant/50" />
+                        <span>Belum ada perangkat yang terdeteksi pada subnet.</span>
+                        <span className="text-[11px] text-m3-on-surface-variant/70">
+                          Masukkan subnet di atas dan tekan <strong>Mulai Scan Subnet</strong>.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  discoveredDevices.map((item) => {
+                    const isApproved = item.status === 'approved';
+                    const isIgnored = item.status === 'ignored';
 
-                  return (
-                    <tr key={item.id} className="hover:bg-m3-surface-container-high/40">
-                      <td className="py-3 px-4 font-mono font-bold">
-                        <div>{item.ip}</div>
-                        <div className="text-[10px] text-m3-on-surface-variant font-normal">
-                          {item.mac}
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-m3-on-surface">{item.suggested_name}</div>
-                        <div className="text-[10px] text-m3-on-surface-variant">{item.vendor}</div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        {item.snmp_detected ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                            <ShieldCheck className="w-3.5 h-3.5" /> SNMP Ready
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-m3-on-surface-variant">ICMP Only</span>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-xs">
-                        {item.response_time} ms
-                      </td>
-
-                      <td className="py-3 px-4 text-right">
-                        {isApproved ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                            <Check className="w-3.5 h-3.5" /> Ditambahkan
-                          </span>
-                        ) : isIgnored ? (
-                          <span className="text-xs text-m3-on-surface-variant italic">Diabaikan</span>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <M3Button
-                              size="sm"
-                              variant="filled-tonal"
-                              onClick={() => approveDiscoveredDevice(item.id)}
-                              icon={<Plus className="w-3.5 h-3.5" />}
-                            >
-                              Setujui & Pantau
-                            </M3Button>
-                            <M3Button
-                              size="sm"
-                              variant="text"
-                              onClick={() => ignoreDiscoveredDevice(item.id)}
-                            >
-                              Abaikan
-                            </M3Button>
+                    return (
+                      <tr key={item.id} className="hover:bg-m3-surface-container-high/40">
+                        <td className="py-3 px-4 font-mono font-bold">
+                          <div>{item.ip}</div>
+                          <div className="text-[10px] text-m3-on-surface-variant font-normal">
+                            {item.mac}
                           </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-m3-on-surface">{item.suggested_name}</div>
+                          <div className="text-[10px] text-m3-on-surface-variant">{item.vendor}</div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {item.snmp_detected ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <ShieldCheck className="w-3.5 h-3.5" /> SNMP Ready
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-m3-on-surface-variant">ICMP Only</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {item.response_time} ms
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          {isApproved ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                              <Check className="w-3.5 h-3.5" /> Ditambahkan
+                            </span>
+                          ) : isIgnored ? (
+                            <span className="text-xs text-m3-on-surface-variant italic">Diabaikan</span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2">
+                              <M3Button
+                                size="sm"
+                                variant="filled-tonal"
+                                onClick={() => approveDiscoveredDevice(item.id)}
+                                icon={<Plus className="w-3.5 h-3.5" />}
+                              >
+                                Setujui & Pantau
+                              </M3Button>
+                              <M3Button
+                                size="sm"
+                                variant="text"
+                                onClick={() => ignoreDiscoveredDevice(item.id)}
+                              >
+                                Abaikan
+                              </M3Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

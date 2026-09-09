@@ -960,21 +960,38 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
-  const startAutoDiscovery = useCallback((subnet: string) => {
+  const startAutoDiscovery = useCallback(async (subnet: string) => {
     setIsScanning(true);
     setScanProgress(0);
-    nmsApi.startDiscovery(subnet).catch(e => console.warn('Failed to trigger startDiscovery:', e));
+
     const interval = setInterval(() => {
-      setScanProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsScanning(false);
-          addAuditLog('AUTO_DISCOVERY', `Menyelesaikan pemindaian subnet ${subnet}`);
-          return 100;
-        }
-        return prev + 20;
+      setScanProgress((prev) => {
+        if (prev >= 85) return 85;
+        return prev + 15;
       });
-    }, 400);
+    }, 200);
+
+    try {
+      const res = await nmsApi.startDiscovery(subnet);
+      clearInterval(interval);
+      setScanProgress(100);
+      setIsScanning(false);
+
+      if (res && Array.isArray(res)) {
+        setDiscoveredDevices(res);
+      } else {
+        const freshList = await nmsApi.getDiscovery();
+        if (Array.isArray(freshList)) {
+          setDiscoveredDevices(freshList);
+        }
+      }
+      addAuditLog('AUTO_DISCOVERY', `Menyelesaikan pemindaian subnet ${subnet}`);
+    } catch (e) {
+      console.warn('Failed to trigger startDiscovery:', e);
+      clearInterval(interval);
+      setScanProgress(100);
+      setIsScanning(false);
+    }
   }, [addAuditLog]);
 
   const approveDiscoveredDevice = useCallback((id: string) => {
