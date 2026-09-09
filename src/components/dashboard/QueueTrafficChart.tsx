@@ -20,7 +20,7 @@ export const QueueTrafficChart: React.FC = () => {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await syncQueues();
+      await syncQueues(undefined, true);
     } finally {
       setTimeout(() => setIsSyncing(false), 500);
     }

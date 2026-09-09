@@ -50,7 +50,18 @@ export async function GET(
         };
         interfaces = await db.select().from(deviceInterfaces).where(eq(deviceInterfaces.deviceId, id));
         queues = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, id));
-        tunnels = await db.select().from(vpnTunnels).where(eq(vpnTunnels.deviceId, id));
+        tunnels = (await db.select().from(vpnTunnels).where(eq(vpnTunnels.deviceId, id))).map((v: any) => ({
+          id: v.id,
+          device_id: v.deviceId || v.device_id,
+          name: v.name,
+          type: v.type,
+          user: v.user,
+          remote_ip: v.remoteIp || v.remote_ip,
+          status: v.status,
+          uptime: v.uptime,
+          bytes_in: Number(v.bytesIn || v.bytes_in || 0),
+          bytes_out: Number(v.bytesOut || v.bytes_out || 0),
+        }));
       }
     } catch {
       // Database error

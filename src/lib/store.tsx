@@ -120,12 +120,14 @@ interface NmsContextType {
 
   addAuditLog: (action: string, details: string) => void;
   pingDevice: (ip: string) => Promise<{ latency: number; loss: number; success: boolean; packets: number[] }>;
-  syncQueues: (deviceId?: string) => Promise<void>;
+  syncQueues: (deviceId?: string, forceRefresh?: boolean) => Promise<void>;
   addQueue: (queue: any) => void;
-  syncInterfaces: (deviceId?: string) => Promise<void>;
+  syncInterfaces: (deviceId?: string, forceRefresh?: boolean) => Promise<void>;
   addInterface: (iface: any) => void;
   updateInterface: (id: string, updates: Partial<DeviceInterface>) => void;
   updateAllInterfaceSpeeds: (deviceId: string, speed: string) => void;
+  syncVpnTunnels: (deviceId?: string, forceRefresh?: boolean) => Promise<void>;
+  addVpnTunnel: (tunnel: any) => void;
   syncDeviceViaSnmp: (deviceId: string) => Promise<{ success: boolean; message?: string; data?: any; error?: string; cliHelp?: string }>;
   testSnmpConnection: (config: any) => Promise<{ success: boolean; message?: string; data?: any; error?: string; cliHelp?: string }>;
 }
@@ -259,6 +261,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           alertRulesRes,
           queuesRes,
           interfacesRes,
+          vpnRes,
         ] = await Promise.allSettled([
           nmsApi.getDevices(),
           nmsApi.getLocations(),
@@ -271,6 +274,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           nmsApi.getAlertRules(),
           nmsApi.getQueues(),
           nmsApi.getInterfaces(),
+          nmsApi.getVpnTunnels(),
         ]);
 
         let loadedDevices: Device[] = [];
@@ -313,6 +317,9 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (typeof window !== 'undefined') {
             try { localStorage.setItem('nms_interfaces', JSON.stringify(interfacesRes.value)); } catch {}
           }
+        }
+        if (vpnRes.status === 'fulfilled' && Array.isArray(vpnRes.value)) {
+          setVpnTunnels(vpnRes.value);
         }
         if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
           setUsers(usersRes.value);
@@ -496,9 +503,9 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Actions
-  const syncInterfaces = useCallback(async (deviceId?: string) => {
+  const syncInterfaces = useCallback(async (deviceId?: string, forceRefresh = false) => {
     try {
-      const res: any = await nmsApi.getInterfaces(deviceId);
+      const res: any = await nmsApi.getInterfaces(deviceId, forceRefresh);
       const list = Array.isArray(res) ? res : (res?.data || []);
       if (list.length > 0) {
         setInterfaces(prev => {
@@ -628,6 +635,15 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
+        // 4. Update VPN tunnels if any
+        const realVpnTunnels = res.data?.vpnTunnels;
+        if (Array.isArray(realVpnTunnels) && realVpnTunnels.length > 0) {
+          setVpnTunnels(prev => {
+            const others = prev.filter(v => v.device_id !== deviceId);
+            return [...others, ...realVpnTunnels];
+          });
+        }
+
         addAuditLog(
           'SNMP_SYNC_SUCCESS',
           `Berhasil membaca metrik asli MikroTik via SNMP (${dev?.name || deviceId} - ${latencyMs} ms)`
@@ -665,9 +681,9 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const syncQueues = useCallback(async (deviceId?: string) => {
+  const syncQueues = useCallback(async (deviceId?: string, forceRefresh = false) => {
     try {
-      const res: any = await nmsApi.getQueues(deviceId);
+      const res: any = await nmsApi.getQueues(deviceId, forceRefresh);
       if (Array.isArray(res)) {
         setQueues(res);
       } else if (res && Array.isArray(res.data)) {
@@ -693,6 +709,38 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setQueues(prev => [created, ...prev]);
     nmsApi.createQueue(created).catch(e => console.warn('Failed to persist createQueue:', e));
     addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
+  }, [devices, addAuditLog]);
+
+  const syncVpnTunnels = useCallback(async (deviceId?: string, forceRefresh = false) => {
+    try {
+      const res: any = await nmsApi.getVpnTunnels(deviceId, forceRefresh);
+      if (Array.isArray(res)) {
+        setVpnTunnels(res);
+      } else if (res && Array.isArray(res.data)) {
+        setVpnTunnels(res.data);
+      }
+      addAuditLog('SYNC_VPN_TUNNELS', 'Menyinkronkan sesi VPN dari MikroTik');
+    } catch (err) {
+      console.warn('Failed to sync VPN tunnels:', err);
+    }
+  }, [addAuditLog]);
+
+  const addVpnTunnel = useCallback((vData: any) => {
+    const created: VpnTunnel = {
+      id: vData.id || `vpn-${Date.now()}`,
+      device_id: vData.device_id || (devices[0]?.id || 'dev-1'),
+      name: vData.name || 'VPN Tunnel',
+      type: vData.type || 'openvpn',
+      user: vData.user || 'user',
+      remote_ip: vData.remote_ip || '10.8.0.2',
+      status: vData.status || 'connected',
+      uptime: vData.uptime || '1 jam',
+      bytes_in: vData.bytes_in || 0,
+      bytes_out: vData.bytes_out || 0,
+    };
+    setVpnTunnels(prev => [created, ...prev]);
+    nmsApi.createVpnTunnel(created).catch(e => console.warn('Failed to persist createVpnTunnel:', e));
+    addAuditLog('ADD_VPN_TUNNEL', `Menambahkan tunnel VPN: ${created.name} (${created.user})`);
   }, [devices, addAuditLog]);
 
   const addLocation = useCallback((locationData: Omit<Location, 'id'>) => {
@@ -1103,6 +1151,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addInterface,
     updateInterface,
     updateAllInterfaceSpeeds,
+    syncVpnTunnels,
+    addVpnTunnel,
     syncDeviceViaSnmp,
     testSnmpConnection,
   };

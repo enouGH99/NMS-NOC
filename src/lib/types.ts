@@ -4,7 +4,7 @@ export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type RepairStatus = 'berjalan' | 'selesai';
 export type UserRole = 'admin' | 'petugas';
 export type ReportFrequency = 'harian' | 'mingguan' | 'bulanan';
-export type VpnType = 'wireguard' | 'l2tp' | 'sstp' | 'ipsec' | 'openvpn';
+export type VpnType = 'wireguard' | 'l2tp' | 'sstp' | 'ipsec' | 'openvpn' | 'pptp';
 
 export interface Location {
   id: string;

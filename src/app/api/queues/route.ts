@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const deviceId = searchParams.get('deviceId');
+    const refresh = searchParams.get('refresh') === 'true';
 
     let rows: any[] = [];
     try {
@@ -16,8 +17,8 @@ export async function GET(request: NextRequest) {
         rows = await db.select().from(queueTraffics).orderBy(desc(queueTraffics.priority));
       }
 
-      // If empty and there is at least one router device registered, poll live queues from MikroTik via SNMP
-      if (rows.length === 0) {
+      // If refresh requested OR database empty, poll live queues directly from MikroTik via SNMP
+      if (refresh || rows.length === 0) {
         const routerRows = await db.select().from(devices);
         const targetRouter = deviceId 
           ? routerRows.find(d => d.id === deviceId) 
@@ -34,6 +35,9 @@ export async function GET(request: NextRequest) {
           });
 
           if (pollRes.success && pollRes.queues.length > 0) {
+            // Delete all stale/old queues for this device in PostgreSQL
+            await db.delete(queueTraffics).where(eq(queueTraffics.deviceId, targetRouter.id));
+
             for (let i = 0; i < pollRes.queues.length; i++) {
               const q = pollRes.queues[i];
               let maxDl = 50;
@@ -56,10 +60,10 @@ export async function GET(request: NextRequest) {
                 queueType: 'default-small',
                 priority: i + 1,
                 updatedAt: new Date(),
-              }).onConflictDoNothing();
+              });
             }
 
-            rows = await db.select().from(queueTraffics).orderBy(desc(queueTraffics.priority));
+            rows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, targetRouter.id));
           }
         }
       }
@@ -80,6 +84,9 @@ export async function GET(request: NextRequest) {
       packet_rate: 120,
       dropped: Number(q.packetDropsPerSec || 0),
     }));
+
+    // Natural sort: 1. Total Bandwith, 2. Laptop Mr M, 3. DEV, 4. Kantor, 5. Server
+    mapped.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
     return NextResponse.json({ success: true, count: mapped.length, data: mapped });
   } catch (error: any) {

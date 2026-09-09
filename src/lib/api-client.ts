@@ -82,11 +82,32 @@ export const nmsApi = {
   updateDiscoveryDevice: (id: string, action: 'approve' | 'ignore') =>
     fetchApi('/api/discovery', { method: 'PUT', body: JSON.stringify({ id, action }) }),
 
-  getQueues: (deviceId?: string) => fetchApi(`/api/queues${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  getQueues: (deviceId?: string, refresh?: boolean) => {
+    const params = new URLSearchParams();
+    if (deviceId) params.set('deviceId', deviceId);
+    if (refresh) params.set('refresh', 'true');
+    const query = params.toString();
+    return fetchApi(`/api/queues${query ? `?${query}` : ''}`);
+  },
   createQueue: (data: any) => fetchApi('/api/queues', { method: 'POST', body: JSON.stringify(data) }),
 
-  getInterfaces: (deviceId?: string) => fetchApi(`/api/interfaces${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  getInterfaces: (deviceId?: string, refresh?: boolean) => {
+    const params = new URLSearchParams();
+    if (deviceId) params.set('deviceId', deviceId);
+    if (refresh) params.set('refresh', 'true');
+    const query = params.toString();
+    return fetchApi(`/api/interfaces${query ? `?${query}` : ''}`);
+  },
   createInterface: (data: any) => fetchApi('/api/interfaces', { method: 'POST', body: JSON.stringify(data) }),
+
+  getVpnTunnels: (deviceId?: string, refresh?: boolean) => {
+    const params = new URLSearchParams();
+    if (deviceId) params.set('deviceId', deviceId);
+    if (refresh) params.set('refresh', 'true');
+    const query = params.toString();
+    return fetchApi(`/api/vpn-tunnels${query ? `?${query}` : ''}`);
+  },
+  createVpnTunnel: (data: any) => fetchApi('/api/vpn-tunnels', { method: 'POST', body: JSON.stringify(data) }),
 
   getUsers: () => fetchApi('/api/users'),
   createUser: (data: any) => fetchApi('/api/users', { method: 'POST', body: JSON.stringify(data) }),

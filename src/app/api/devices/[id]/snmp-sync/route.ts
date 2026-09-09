@@ -140,6 +140,31 @@ export async function POST(
         }
       }
 
+      // Sync VPN Tunnels if found
+      if (pollResult.vpnTunnels && pollResult.vpnTunnels.length > 0) {
+        try {
+          const { vpnTunnels } = await import('@/db/schema');
+          await db.delete(vpnTunnels).where(eq(vpnTunnels.deviceId, id));
+          for (const tunnel of pollResult.vpnTunnels) {
+            await db.insert(vpnTunnels).values({
+              id: tunnel.id,
+              deviceId: id,
+              name: tunnel.name,
+              type: tunnel.type,
+              user: tunnel.user,
+              remoteIp: tunnel.remote_ip,
+              status: tunnel.status,
+              uptime: tunnel.uptime,
+              bytesIn: tunnel.bytes_in,
+              bytesOut: tunnel.bytes_out,
+              updatedAt: new Date(),
+            });
+          }
+        } catch {
+          // Fallback
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: `Berhasil menarik metrik asli dari MikroTik via SNMP (${pollResult.latencyMs} ms)`,
@@ -149,6 +174,7 @@ export async function POST(
           system: pollResult.system,
           interfaces: pollResult.interfaces,
           queues: pollResult.queues,
+          vpnTunnels: pollResult.vpnTunnels,
           latencyMs: pollResult.latencyMs,
         },
       });

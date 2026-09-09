@@ -1,0 +1,62 @@
+name: Deploy NMS NOC to Office Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy on Self-Hosted Server
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 🔐 Configure Environment Variables
+        run: |
+          cat << 'EOF' > .env.local
+          DATABASE_URL="${{ secrets.DATABASE_URL }}"
+          BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}"
+          BETTER_AUTH_URL="${{ secrets.BETTER_AUTH_URL }}"
+          NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}"
+          EOF
+
+      - name: 📦 Install Dependencies
+        run: npm ci
+
+      - name: 🗄️ Run Database Migrations
+        run: npx drizzle-kit push
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: 🏗️ Build Next.js Production
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      - name: 🚀 Reload / Start Service via PM2
+        run: |
+          if command -v pm2 &> /dev/null; then
+            pm2 reload ecosystem.config.cjs --env production || pm2 start ecosystem.config.cjs --env production
+            pm2 save
+          else
+            echo "PM2 not found globally, executing via npx..."
+            npx pm2 reload ecosystem.config.cjs --env production || npx pm2 start ecosystem.config.cjs --env production
+            npx pm2 save
+          fi
