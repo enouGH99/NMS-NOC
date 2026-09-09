@@ -306,8 +306,10 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setReportSchedules(sch);
           }
         }
-        if (alertRulesRes.status === 'fulfilled' && Array.isArray(alertRulesRes.value)) {
+        if (alertRulesRes.status === 'fulfilled' && Array.isArray(alertRulesRes.value) && alertRulesRes.value.length > 0) {
           setAlertRules(alertRulesRes.value);
+        } else {
+          setAlertRules(initialAlertRules);
         }
         if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
           setQueues(queuesRes.value);

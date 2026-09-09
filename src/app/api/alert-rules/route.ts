@@ -1,8 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { alertRules } from '@/db/schema';
-import { initialAlertRules } from '@/lib/mock-data';
 import { eq } from 'drizzle-orm';
+
+const defaultStandardRules = [
+  {
+    id: 'rule-1',
+    name: 'Peringatan Perangkat Down / Putus (Ping Offline)',
+    metric: 'offline_status',
+    condition: 'offline',
+    threshold: '1',
+    durationSeconds: 60,
+    enabled: true,
+    escalationTier: 1,
+    notifyEmail: true,
+    notifySound: true,
+    createdAt: new Date(),
+  },
+  {
+    id: 'rule-2',
+    name: 'Ambang Batas Latensi Tinggi (> 75ms)',
+    metric: 'latency',
+    condition: '>',
+    threshold: '75',
+    durationSeconds: 120,
+    enabled: true,
+    escalationTier: 1,
+    notifyEmail: false,
+    notifySound: true,
+    createdAt: new Date(),
+  },
+  {
+    id: 'rule-3',
+    name: 'Ambang Batas Beban CPU Kritis (> 85%)',
+    metric: 'cpu_usage',
+    condition: '>',
+    threshold: '85',
+    durationSeconds: 300,
+    enabled: true,
+    escalationTier: 2,
+    notifyEmail: true,
+    notifySound: true,
+    createdAt: new Date(),
+  },
+  {
+    id: 'rule-4',
+    name: 'Packet Loss Jaringan Ekstrem (> 5%)',
+    metric: 'packet_loss',
+    condition: '>',
+    threshold: '5',
+    durationSeconds: 60,
+    enabled: true,
+    escalationTier: 1,
+    notifyEmail: true,
+    notifySound: true,
+    createdAt: new Date(),
+  },
+  {
+    id: 'rule-5',
+    name: 'Suhu Perangkat Kritis (> 55°C)',
+    metric: 'temperature',
+    condition: '>',
+    threshold: '55',
+    durationSeconds: 60,
+    enabled: true,
+    escalationTier: 2,
+    notifyEmail: true,
+    notifySound: true,
+    createdAt: new Date(),
+  },
+];
 
 export async function GET() {
   try {
@@ -11,6 +78,18 @@ export async function GET() {
       rules = await db.select().from(alertRules);
     } catch {
       rules = [];
+    }
+
+    // Auto-seed default standard enterprise rules if empty
+    if (rules.length === 0) {
+      try {
+        for (const r of defaultStandardRules) {
+          await db.insert(alertRules).values(r);
+        }
+        rules = defaultStandardRules;
+      } catch {
+        rules = defaultStandardRules;
+      }
     }
 
     const mapped = rules.map((r: any) => ({
