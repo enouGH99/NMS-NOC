@@ -1,13 +1,38 @@
 /**
  * Standalone Database Auto-Migrator for Production & Docker Containers
- * Runs without needing drizzle-kit CLI or TypeScript runtime.
+ * Runs with 0 external dev dependencies (pure Node.js + postgres driver).
  */
 const postgres = require('postgres');
-const dotenv = require('dotenv');
+const fs = require('fs');
+const path = require('path');
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
-dotenv.config();
+// Simple zero-dependency .env loader for local development
+function loadEnvFile(filePath) {
+  try {
+    const fullPath = path.resolve(process.cwd(), filePath);
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath, 'utf8');
+      content.split('\n').forEach((line) => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const idx = trimmed.indexOf('=');
+          if (idx !== -1) {
+            const key = trimmed.substring(0, idx).trim();
+            const val = trimmed.substring(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+}
+
+loadEnvFile('.env.local');
+loadEnvFile('.env');
 
 const connectionString =
   process.env.DATABASE_URL || 'postgres://postgres:Dimas*007@localhost:5432/nms_db';
