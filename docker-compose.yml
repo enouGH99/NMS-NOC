@@ -1,0 +1,50 @@
+services:
+  # 1. NMS NOC Web Application
+  nms-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nms-noc-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD:-Dimas*007}@postgres:5432/${POSTGRES_DB:-nms_db}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-nms-noc-production-super-secret-key-32chars-length-min}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nms-network
+
+  # 2. PostgreSQL + TimescaleDB Database
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: nms-noc-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Dimas*007}
+      POSTGRES_DB: ${POSTGRES_DB:-nms_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - nms_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-nms_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nms-network
+
+volumes:
+  nms_pg_data:
+    driver: local
+
+networks:
+  nms-network:
+    driver: bridge
