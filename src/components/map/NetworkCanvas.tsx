@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Device, DeviceStatus } from '@/lib/types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Device } from '@/lib/types';
 import { getStatusM3Badge } from '@/lib/m3-theme';
 import {
   Router,
@@ -12,7 +12,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Maximize2,
+  Move,
 } from 'lucide-react';
 
 interface NetworkCanvasProps {
@@ -20,6 +20,7 @@ interface NetworkCanvasProps {
   selectedLocation: string;
   selectedType: string;
   onSelectDevice: (device: Device) => void;
+  onUpdateCoordinates?: (id: string, coords: { x: number; y: number }) => void;
 }
 
 export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
@@ -27,11 +28,63 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   selectedLocation,
   selectedType,
   onSelectDevice,
+  onUpdateCoordinates,
 }) => {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Realtime coordinates for all devices on canvas
+  const [localCoords, setLocalCoords] = useState<Record<string, { x: number; y: number }>>({});
+
+  // Node Dragging State
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragStartInfo, setDragStartInfo] = useState<{
+    clientX: number;
+    clientY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+  const [hasMovedNode, setHasMovedNode] = useState(false);
+
+  // Synchronize and auto-layout overlapping coordinates
+  useEffect(() => {
+    const coordsMap: Record<string, { x: number; y: number }> = {};
+    const rootRouter = devices.find(
+      (d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')
+    ) || devices[0];
+
+    // Find if devices are overlapping at identical coordinates (e.g. both at 400, 300)
+    devices.forEach((d, idx) => {
+      let x = d.coordinates?.x ?? 450;
+      let y = d.coordinates?.y ?? 250;
+
+      // If router, keep near top center
+      if (d.id === rootRouter?.id) {
+        x = d.coordinates?.x ?? 450;
+        y = d.coordinates?.y ?? 160;
+      } else {
+        // If not router and has no distinct coordinates or overlaps exactly with router
+        if (
+          !d.coordinates ||
+          (d.coordinates.x === rootRouter?.coordinates?.x && d.coordinates.y === rootRouter?.coordinates?.y) ||
+          (x === 400 && y === 300 && d.id !== rootRouter?.id)
+        ) {
+          const nonRootIndex = devices.filter((dev) => dev.id !== rootRouter?.id).indexOf(d);
+          const cols = 3;
+          const col = nonRootIndex % cols;
+          const row = Math.floor(nonRootIndex / cols);
+          x = 280 + col * 200;
+          y = 350 + row * 160;
+        }
+      }
+
+      coordsMap[d.id] = { x, y };
+    });
+
+    setLocalCoords(coordsMap);
+  }, [devices]);
 
   const filteredDevices = devices.filter((d) => {
     if (selectedLocation !== 'all' && d.location_id !== selectedLocation) return false;
@@ -39,25 +92,76 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     return true;
   });
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag canvas if not clicking directly on interactive nodes
-    if ((e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).id === 'map-bg') {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  // Background Canvas Pan Handling
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    // Only pan if clicking canvas background, not a device node
+    if ((e.target as HTMLElement).id === 'map-bg' || (e.target as HTMLElement).tagName === 'svg') {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
+    if (draggingNodeId && dragStartInfo) {
+      // Calculate delta in canvas coordinate space accounting for zoom
+      const deltaX = (e.clientX - dragStartInfo.clientX) / zoom;
+      const deltaY = (e.clientY - dragStartInfo.clientY) / zoom;
+
+      if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+        setHasMovedNode(true);
+      }
+
+      const newX = Math.round(dragStartInfo.origX + deltaX);
+      const newY = Math.round(dragStartInfo.origY + deltaY);
+
+      setLocalCoords((prev) => ({
+        ...prev,
+        [draggingNodeId]: { x: newX, y: newY },
+      }));
+    } else if (isPanning) {
       setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
       });
     }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    if (draggingNodeId) {
+      if (hasMovedNode && onUpdateCoordinates) {
+        const finalPos = localCoords[draggingNodeId];
+        if (finalPos) {
+          onUpdateCoordinates(draggingNodeId, finalPos);
+        }
+      }
+      setDraggingNodeId(null);
+      setDragStartInfo(null);
+      setHasMovedNode(false);
+    }
+    setIsPanning(false);
+  };
+
+  // Node Drag Start
+  const handleNodeMouseDown = (e: React.MouseEvent, device: Device) => {
+    e.stopPropagation();
+    // Only primary mouse button (left-click)
+    if (e.button !== 0) return;
+
+    const currentPos = localCoords[device.id] || device.coordinates || { x: 450, y: 300 };
+    setDraggingNodeId(device.id);
+    setHasMovedNode(false);
+    setDragStartInfo({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      origX: currentPos.x,
+      origY: currentPos.y,
+    });
+  };
+
+  const handleNodeClick = (device: Device) => {
+    if (!hasMovedNode) {
+      onSelectDevice(device);
+    }
   };
 
   const resetView = () => {
@@ -80,18 +184,22 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     }
   };
 
+  // Find root gateway router
+  const rootRouter =
+    devices.find((d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) || devices[0];
+
   return (
     <div
-      className="relative w-full h-[650px] bg-m3-surface-container-lowest rounded-m3-3xl border border-m3-outline-variant/30 overflow-hidden select-none cursor-grab active:cursor-grabbing shadow-inner"
-      onMouseDown={handleMouseDown}
+      className="relative w-full h-[650px] bg-m3-surface-container-lowest rounded-m3-3xl border border-m3-outline-variant/30 overflow-hidden select-none cursor-default shadow-inner"
+      onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Background Blueprint Grid */}
+      {/* Blueprint Grid Background */}
       <div
         id="map-bg"
-        className="absolute inset-0 opacity-20 dark:opacity-30 pointer-events-auto"
+        className="absolute inset-0 opacity-20 dark:opacity-30 cursor-grab active:cursor-grabbing"
         style={{
           backgroundImage: `
             linear-gradient(to right, rgba(140, 145, 153, 0.25) 1px, transparent 1px),
@@ -117,9 +225,13 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
           <span className="text-m3-on-surface-variant font-medium">Offline (Down)</span>
         </div>
+        <div className="pt-1 border-t border-m3-outline-variant/20 text-[10px] text-m3-primary flex items-center gap-1">
+          <Move className="w-3 h-3" />
+          <span>Klik & geser node untuk atur posisi</span>
+        </div>
       </div>
 
-      {/* Floating Map Controls (FABs) */}
+      {/* Floating Map Controls */}
       <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2 bg-m3-surface-container/90 p-1.5 rounded-m3-full border border-m3-outline-variant/30 shadow-m3-2 backdrop-blur-md">
         <button
           onClick={() => setZoom((z) => Math.min(z + 0.15, 2.2))}
@@ -146,17 +258,24 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
 
       {/* Scalable & Pannable SVG Container */}
       <div
-        className="absolute inset-0 origin-top-left transition-transform duration-75"
+        className="absolute inset-0 origin-top-left transition-transform duration-75 pointer-events-none"
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         }}
       >
-        <svg className="w-full h-full min-w-[1000px] min-h-[700px] overflow-visible">
-          {/* Connection Cables / Links between Parent and Child devices */}
+        {/* Animated Connection Lines / Cables */}
+        <svg className="w-full h-full min-w-[1200px] min-h-[800px] overflow-visible">
           {devices.map((device) => {
-            if (!device.parent_device_id || !device.coordinates) return null;
-            const parent = devices.find((d) => d.id === device.parent_device_id);
-            if (!parent || !parent.coordinates) return null;
+            // Find parent device: explicit parent_device_id or default to root router
+            const parentId =
+              device.parent_device_id || (device.id !== rootRouter?.id && rootRouter ? rootRouter.id : undefined);
+
+            if (!parentId || device.id === parentId) return null;
+            const parent = devices.find((d) => d.id === parentId);
+            if (!parent) return null;
+
+            const childCoords = localCoords[device.id] || device.coordinates || { x: 450, y: 350 };
+            const parentCoords = localCoords[parent.id] || parent.coordinates || { x: 450, y: 160 };
 
             const isLinkHealthy = device.status === 'online' && parent.status === 'online';
             const isLinkWarning = device.status === 'warning' || parent.status === 'warning';
@@ -174,57 +293,65 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
 
             return (
               <g key={`link-${device.id}-${parent.id}`}>
-                {/* Base Cable Glow */}
+                {/* Base Cable Glow Line */}
                 <line
-                  x1={parent.coordinates.x}
-                  y1={parent.coordinates.y}
-                  x2={device.coordinates.x}
-                  y2={device.coordinates.y}
+                  x1={parentCoords.x}
+                  y1={parentCoords.y}
+                  x2={childCoords.x}
+                  y2={childCoords.y}
                   stroke={strokeColor}
                   strokeWidth="3"
-                  strokeOpacity="0.4"
+                  strokeOpacity="0.45"
+                  strokeLinecap="round"
                 />
-                {/* Flow Animated Packet Line */}
+                {/* Animated Packet Flow Line */}
                 <line
-                  x1={parent.coordinates.x}
-                  y1={parent.coordinates.y}
-                  x2={device.coordinates.x}
-                  y2={device.coordinates.y}
+                  x1={parentCoords.x}
+                  y1={parentCoords.y}
+                  x2={childCoords.x}
+                  y2={childCoords.y}
                   stroke={strokeColor}
                   strokeWidth="2"
+                  strokeDasharray="6 6"
                   className={strokeClass}
+                  strokeLinecap="round"
                 />
               </g>
             );
           })}
         </svg>
 
-        {/* Device Interactive Nodes */}
+        {/* Interactive Draggable Device Nodes */}
         {filteredDevices.map((device) => {
-          if (!device.coordinates) return null;
+          const coords = localCoords[device.id] || device.coordinates || { x: 450, y: 300 };
           const statusBadge = getStatusM3Badge(device.status);
+          const isBeingDragged = draggingNodeId === device.id;
 
           return (
             <div
               key={device.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectDevice(device);
-              }}
+              onMouseDown={(e) => handleNodeMouseDown(e, device)}
+              onClick={() => handleNodeClick(device)}
               style={{
-                left: `${device.coordinates.x}px`,
-                top: `${device.coordinates.y}px`,
+                left: `${coords.x}px`,
+                top: `${coords.y}px`,
                 transform: 'translate(-50%, -50%)',
               }}
-              className="absolute z-20 cursor-pointer group select-none"
+              className={`absolute z-20 select-none pointer-events-auto transition-shadow ${
+                isBeingDragged
+                  ? 'cursor-grabbing scale-110 z-30 shadow-2xl'
+                  : 'cursor-grab group'
+              }`}
             >
-              {/* Pulse status halo */}
+              {/* Pulse Status Halo */}
               <div
                 className={`absolute -inset-2 rounded-full opacity-30 ${
                   device.status === 'warning'
                     ? 'bg-amber-500 animate-ping'
                     : device.status === 'offline'
                     ? 'bg-rose-500'
+                    : isBeingDragged
+                    ? 'bg-emerald-400'
                     : 'bg-emerald-500 group-hover:animate-ping'
                 }`}
               />
@@ -232,7 +359,11 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
               {/* Node Card Container */}
               <div className="relative flex flex-col items-center">
                 <div
-                  className={`w-13 h-13 rounded-m3-2xl p-3 flex items-center justify-center transition-all duration-200 border-2 shadow-m3-2 group-hover:scale-115 group-hover:shadow-m3-3 ${
+                  className={`w-13 h-13 rounded-m3-2xl p-3 flex items-center justify-center transition-all duration-150 border-2 shadow-m3-2 ${
+                    isBeingDragged
+                      ? 'scale-115 ring-4 ring-m3-primary/30 border-m3-primary bg-m3-surface-container-highest text-m3-primary'
+                      : 'group-hover:scale-110'
+                  } ${
                     device.status === 'online'
                       ? 'bg-m3-surface-container-high border-emerald-500 text-emerald-400'
                       : device.status === 'warning'
@@ -244,7 +375,7 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
                 </div>
 
                 {/* Node Label Card */}
-                <div className="mt-2 px-2.5 py-1 rounded-m3-md bg-m3-surface-container/95 border border-m3-outline-variant/40 shadow-sm text-center max-w-[140px] pointer-events-none group-hover:scale-105 transition-transform">
+                <div className="mt-2 px-2.5 py-1 rounded-m3-md bg-m3-surface-container/95 border border-m3-outline-variant/40 shadow-sm text-center max-w-[150px] pointer-events-none group-hover:scale-105 transition-transform backdrop-blur-sm">
                   <div className="text-[11px] font-bold text-m3-on-surface truncate">
                     {device.name}
                   </div>

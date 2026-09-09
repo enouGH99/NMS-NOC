@@ -998,15 +998,24 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const disc = discoveredDevices.find(d => d.id === id);
     if (!disc) return;
 
+    const rootRouter = devices.find(d => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) || devices[0];
+    const nonRootCount = devices.filter(d => d.id !== rootRouter?.id).length;
+    const col = nonRootCount % 3;
+    const row = Math.floor(nonRootCount / 3);
+    const newX = 280 + col * 200;
+    const newY = 350 + row * 160;
+
     addDevice({
       name: disc.suggested_name,
       type: disc.type,
       ip_address: disc.ip,
       mac_address: disc.mac,
       model: `${disc.vendor} Auto-Discovered`,
-      location_id: locations[0].id,
+      location_id: locations[0]?.id || 'loc-1',
       is_priority: false,
       status: 'online',
+      parent_device_id: rootRouter ? rootRouter.id : undefined,
+      coordinates: { x: newX, y: newY },
       uptime: '1 jam',
       cpu_usage: 12,
       ram_usage: 25,
@@ -1022,7 +1031,7 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(d => (d.id === id ? { ...d, status: 'approved' } : d))
     );
     nmsApi.updateDiscoveryDevice(id, 'approve').catch(e => console.warn('Failed to sync approve discovery:', e));
-  }, [discoveredDevices, locations, addDevice]);
+  }, [discoveredDevices, locations, addDevice, devices]);
 
   const ignoreDiscoveredDevice = useCallback((id: string) => {
     setDiscoveredDevices(prev =>

@@ -10,7 +10,7 @@ import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { Map, Info } from 'lucide-react';
 
 export default function MapPage() {
-  const { devices, locations } = useNms();
+  const { devices, locations, updateDevice } = useNms();
 
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
@@ -27,6 +27,10 @@ export default function MapPage() {
   const handleOpenRepair = (dev: Device) => {
     setDeviceForRepair(dev);
     setRepairModalOpen(true);
+  };
+
+  const handleUpdateCoordinates = (id: string, coords: { x: number; y: number }) => {
+    updateDevice(id, { coordinates: coords });
   };
 
   return (
@@ -66,6 +70,7 @@ export default function MapPage() {
         selectedLocation={selectedLocation}
         selectedType={selectedType}
         onSelectDevice={handleSelectDevice}
+        onUpdateCoordinates={handleUpdateCoordinates}
       />
 
       {/* Side Sheet Detail Inspector */}
