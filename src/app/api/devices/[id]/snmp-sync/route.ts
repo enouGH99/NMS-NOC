@@ -106,6 +106,40 @@ export async function POST(
         }
       }
 
+      // Sync Simple Queues if found
+      if (pollResult.queues.length > 0) {
+        try {
+          const { queueTraffics } = await import('@/db/schema');
+          await db.delete(queueTraffics).where(eq(queueTraffics.deviceId, id));
+          for (let i = 0; i < pollResult.queues.length; i++) {
+            const q = pollResult.queues[i];
+            let maxDl = 50;
+            let maxUl = 50;
+            if (q.max_limit) {
+              const parts = q.max_limit.split('/');
+              maxUl = parseInt(parts[0], 10) || 50;
+              maxDl = parseInt(parts[1] || parts[0], 10) || 50;
+            }
+            await db.insert(queueTraffics).values({
+              id: q.id,
+              deviceId: id,
+              name: q.name,
+              targetSubnet: q.target,
+              maxLimitDownloadMbps: maxDl,
+              maxLimitUploadMbps: maxUl,
+              currentDownloadMbps: q.current_rate.download,
+              currentUploadMbps: q.current_rate.upload,
+              packetDropsPerSec: q.dropped,
+              queueType: 'default-small',
+              priority: i + 1,
+              updatedAt: new Date(),
+            });
+          }
+        } catch {
+          // Fallback
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: `Berhasil menarik metrik asli dari MikroTik via SNMP (${pollResult.latencyMs} ms)`,

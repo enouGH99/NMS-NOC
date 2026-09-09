@@ -16,126 +16,51 @@ export async function GET(request: NextRequest) {
         rows = await db.select().from(queueTraffics).orderBy(desc(queueTraffics.priority));
       }
 
-      // If empty and there is at least one router device registered, auto-seed standard MikroTik queues
+      // If empty and there is at least one router device registered, poll live queues from MikroTik via SNMP
       if (rows.length === 0) {
         const routerRows = await db.select().from(devices);
         const targetRouter = deviceId 
           ? routerRows.find(d => d.id === deviceId) 
           : routerRows.find(d => d.type === 'router') || routerRows[0];
 
-        if (targetRouter) {
-          const defaultQueues = [
-            {
-              id: `q-${Date.now()}-1`,
-              deviceId: targetRouter.id,
-              name: 'TOTAL-BANDWIDTH',
-              targetSubnet: '0.0.0.0/0',
-              maxLimitDownloadMbps: 100,
-              maxLimitUploadMbps: 100,
-              currentDownloadMbps: 28.5,
-              currentUploadMbps: 4.2,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 1,
-            },
-            {
-              id: `q-${Date.now()}-2`,
-              deviceId: targetRouter.id,
-              name: 'Admin-LAN (ether2)',
-              targetSubnet: 'ether2',
-              maxLimitDownloadMbps: 100,
-              maxLimitUploadMbps: 100,
-              currentDownloadMbps: 14.2,
-              currentUploadMbps: 2.1,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 2,
-            },
-            {
-              id: `q-${Date.now()}-3`,
-              deviceId: targetRouter.id,
-              name: 'WiFi-Utama (wlan1)',
-              targetSubnet: 'wlan1',
-              maxLimitDownloadMbps: 20,
-              maxLimitUploadMbps: 20,
-              currentDownloadMbps: 8.6,
-              currentUploadMbps: 1.4,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 3,
-            },
-            {
-              id: `q-${Date.now()}-4`,
-              deviceId: targetRouter.id,
-              name: 'WiFi-Game (Legend)',
-              targetSubnet: 'wlan1 (Legend)',
-              maxLimitDownloadMbps: 5,
-              maxLimitUploadMbps: 5,
-              currentDownloadMbps: 2.1,
-              currentUploadMbps: 0.4,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 4,
-            },
-            {
-              id: `q-${Date.now()}-5`,
-              deviceId: targetRouter.id,
-              name: 'WiFi-Umum (Selain-Legend)',
-              targetSubnet: 'wlan1',
-              maxLimitDownloadMbps: 15,
-              maxLimitUploadMbps: 15,
-              currentDownloadMbps: 6.5,
-              currentUploadMbps: 1.0,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 5,
-            },
-            {
-              id: `q-${Date.now()}-6`,
-              deviceId: targetRouter.id,
-              name: 'Staff-LAN (ether4)',
-              targetSubnet: 'ether4',
-              maxLimitDownloadMbps: 20,
-              maxLimitUploadMbps: 20,
-              currentDownloadMbps: 5.7,
-              currentUploadMbps: 0.8,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 6,
-            },
-            {
-              id: `q-${Date.now()}-7`,
-              deviceId: targetRouter.id,
-              name: 'Staff-Umum',
-              targetSubnet: 'ether4',
-              maxLimitDownloadMbps: 10,
-              maxLimitUploadMbps: 10,
-              currentDownloadMbps: 3.2,
-              currentUploadMbps: 0.5,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 7,
-            },
-            {
-              id: `q-${Date.now()}-8`,
-              deviceId: targetRouter.id,
-              name: 'Staff-VIP (Legend)',
-              targetSubnet: 'ether4 (Legend)',
-              maxLimitDownloadMbps: 5,
-              maxLimitUploadMbps: 5,
-              currentDownloadMbps: 2.5,
-              currentUploadMbps: 0.3,
-              packetDropsPerSec: 0,
-              queueType: 'default-small',
-              priority: 8,
-            },
-          ];
+        if (targetRouter && targetRouter.ipAddress) {
+          const { pollDeviceSnmp } = await import('@/lib/snmp-poller');
+          const pollRes = await pollDeviceSnmp(targetRouter.id, {
+            ipAddress: targetRouter.ipAddress,
+            community: targetRouter.snmpCommunity || 'public_nms',
+            version: (targetRouter.snmpVersion as any) || 'v2c',
+            timeoutMs: 3500,
+            retries: 1,
+          });
 
-          for (const q of defaultQueues) {
-            await db.insert(queueTraffics).values({ ...q, updatedAt: new Date() }).onConflictDoNothing();
+          if (pollRes.success && pollRes.queues.length > 0) {
+            for (let i = 0; i < pollRes.queues.length; i++) {
+              const q = pollRes.queues[i];
+              let maxDl = 50;
+              let maxUl = 50;
+              if (q.max_limit) {
+                const parts = q.max_limit.split('/');
+                maxUl = parseInt(parts[0], 10) || 50;
+                maxDl = parseInt(parts[1] || parts[0], 10) || 50;
+              }
+              await db.insert(queueTraffics).values({
+                id: q.id,
+                deviceId: targetRouter.id,
+                name: q.name,
+                targetSubnet: q.target,
+                maxLimitDownloadMbps: maxDl,
+                maxLimitUploadMbps: maxUl,
+                currentDownloadMbps: q.current_rate.download,
+                currentUploadMbps: q.current_rate.upload,
+                packetDropsPerSec: q.dropped,
+                queueType: 'default-small',
+                priority: i + 1,
+                updatedAt: new Date(),
+              }).onConflictDoNothing();
+            }
+
+            rows = await db.select().from(queueTraffics).orderBy(desc(queueTraffics.priority));
           }
-
-          rows = await db.select().from(queueTraffics).orderBy(desc(queueTraffics.priority));
         }
       }
     } catch {
