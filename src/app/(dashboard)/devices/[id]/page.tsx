@@ -13,6 +13,7 @@ import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { AddEditDeviceModal } from '@/components/devices/AddEditDeviceModal';
 import { SnmpSyncModal } from '@/components/devices/SnmpSyncModal';
 import { InterfaceTable } from '@/components/devices/InterfaceTable';
+import { QueueTrafficSparkline } from '@/components/dashboard/QueueTrafficSparkline';
 import {
   Server,
   ArrowLeft,
@@ -33,8 +34,11 @@ import {
   CheckCircle2,
   RefreshCw,
   Radio,
+  Gauge,
+  Search,
+  AlertCircle,
 } from 'lucide-react';
-import { formatBytes, formatMbps, formatDate } from '@/lib/utils';
+import { formatBytes, formatMbps, formatThroughput, formatDate } from '@/lib/utils';
 
 import {
   generateDefaultInterfaces,
@@ -45,7 +49,7 @@ import {
 export default function DeviceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces, syncVpnTunnels } = useNms();
+  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces, syncVpnTunnels, syncQueues } = useNms();
 
   const deviceId = params.id as string;
   const device = devices.find((d) => d.id === deviceId);
@@ -57,6 +61,9 @@ export default function DeviceDetailPage() {
   const [snmpModalOpen, setSnmpModalOpen] = useState(false);
   const [isScanningInterfaces, setIsScanningInterfaces] = useState(false);
   const [isSyncingVpns, setIsSyncingVpns] = useState(false);
+  const [isSyncingQueues, setIsSyncingQueues] = useState(false);
+  const [queueUnitMode, setQueueUnitMode] = useState<'auto' | 'mbps' | 'kbps' | 'bps'>('auto');
+  const [queueSearchQuery, setQueueSearchQuery] = useState('');
 
   if (!device) {
     return (
@@ -284,63 +291,306 @@ export default function DeviceDetailPage() {
 
       {/* Tab 3: Queues */}
       {activeTab === 'queues' && (
-        <M3Card className="p-4 sm:p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-4 animate-in fade-in">
-          <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
-            Pengaturan & Utilisasi Simple Queue MikroTik
-          </h3>
-          <div className="space-y-3">
-            {deviceQueues.map((q) => {
-              const maxNum = parseInt(q.max_limit.split('/')[1] || '100', 10);
-              const currentDl = q.current_rate.download;
-              const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
+        <M3Card className="p-4 sm:p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-5 animate-in fade-in">
+          {/* Header & Main Actions */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-m3-outline-variant/20">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-extrabold text-m3-on-surface flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-m3-primary" />
+                  Daftar Bandwidth Simple Queue MikroTik
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-m3-surface-container-highest text-m3-primary border border-m3-outline-variant/30">
+                  {deviceQueues.length} Total Antrean
+                </span>
+              </div>
+              <p className="text-xs text-m3-on-surface-variant mt-1">
+                Monitoring limit kuota, utilisasi beban, packet drop, dan grafik spektrum trafik live Rx/Tx
+              </p>
+            </div>
 
-              return (
-                <div
-                  key={q.id}
-                  className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-2.5"
+            <div className="flex flex-wrap items-center gap-2">
+              <M3Button
+                size="sm"
+                variant="filled"
+                loading={isSyncingQueues}
+                onClick={async () => {
+                  setIsSyncingQueues(true);
+                  try {
+                    await syncQueues(device.id, true);
+                  } finally {
+                    setIsSyncingQueues(false);
+                  }
+                }}
+                icon={<Radio className="w-4 h-4" />}
+              >
+                {isSyncingQueues ? 'Menyinkronkan Queue...' : 'Segarkan Simple Queue (SNMP)'}
+              </M3Button>
+            </div>
+          </div>
+
+          {/* Controls: Unit Selector & Search */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30">
+            {/* Unit Selector */}
+            <div className="flex items-center gap-1 p-1 rounded-m3-xl bg-m3-surface-container-lowest border border-m3-outline-variant/20">
+              <span className="text-[10px] font-bold text-m3-on-surface-variant px-1.5 flex items-center gap-1 font-mono">
+                <Gauge className="w-3.5 h-3.5 text-m3-primary" />
+                Format Satuan:
+              </span>
+              {(['auto', 'mbps', 'kbps', 'bps'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setQueueUnitMode(mode)}
+                  className={`px-2.5 py-1 rounded-m3-md text-xs font-bold font-mono transition-all ${
+                    queueUnitMode === mode
+                      ? 'bg-m3-primary text-m3-on-primary shadow-xs'
+                      : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container'
+                  }`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-1.5">
-                    <div className="font-bold text-sm text-m3-on-surface flex items-center gap-2">
-                      <span>{q.name}</span>
-                      <span className="font-mono text-[10px] text-m3-on-surface-variant bg-m3-surface-container-highest px-2 py-0.5 rounded-full">
-                        {q.target}
-                      </span>
-                    </div>
+                  {mode === 'auto' ? 'Auto (Winbox)' : mode.toUpperCase()}
+                </button>
+              ))}
+            </div>
 
-                    <span
-                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                        usagePercent > 80
-                          ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                          : usagePercent > 60
-                          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      }`}
-                    >
-                      {usagePercent}% Utilisasi
-                    </span>
-                  </div>
+            {/* Search Input */}
+            <div className="relative min-w-[220px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-m3-on-surface-variant" />
+              <input
+                type="text"
+                placeholder="Cari antrean atau subnet target..."
+                value={queueSearchQuery}
+                onChange={(e) => setQueueSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-m3-xl bg-m3-surface-container-lowest border border-m3-outline-variant/30 text-xs text-m3-on-surface focus:outline-hidden focus:border-m3-primary font-mono placeholder:font-sans"
+              />
+            </div>
+          </div>
 
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                      ↓ {formatMbps(currentDl)} <span className="text-m3-on-surface-variant font-normal">/ maks {q.max_limit}</span>
-                    </span>
-                    <span className="text-sky-600 dark:text-sky-400 font-bold">
-                      ↑ {formatMbps(q.current_rate.upload)}
-                    </span>
-                  </div>
+          {/* Filtered Queues */}
+          {(() => {
+            const filtered = deviceQueues.filter((q) => {
+              if (!queueSearchQuery.trim()) return true;
+              const term = queueSearchQuery.toLowerCase();
+              return (
+                q.name.toLowerCase().includes(term) ||
+                q.target.toLowerCase().includes(term) ||
+                q.max_limit.toLowerCase().includes(term)
+              );
+            });
 
-                  <div className="h-2 w-full bg-m3-surface-container-highest rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        usagePercent > 80 ? 'bg-rose-500' : usagePercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${usagePercent}%` }}
-                    />
-                  </div>
+            if (filtered.length === 0) {
+              return (
+                <div className="text-center py-10 text-xs text-m3-on-surface-variant">
+                  Tidak ada Simple Queue yang cocok dengan kata kunci.
                 </div>
               );
-            })}
-          </div>
+            }
+
+            return (
+              <>
+                {/* Desktop Full Table (>= md) */}
+                <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest hidden md:block">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs min-w-[850px]">
+                      <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider">
+                        <tr>
+                          <th className="py-3 px-3 w-12 text-center">#</th>
+                          <th className="py-3 px-4">Nama Simple Queue</th>
+                          <th className="py-3 px-3">Target Subnet / IP</th>
+                          <th className="py-3 px-3">Limit Kuota (Max)</th>
+                          <th className="py-3 px-4">Trafik Tx (Upload)</th>
+                          <th className="py-3 px-4">Trafik Rx (Download)</th>
+                          <th className="py-3 px-4 w-52">Grafik Trafik Realtime</th>
+                          <th className="py-3 px-4">Utilisasi</th>
+                          <th className="py-3 px-3 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-m3-outline-variant/20">
+                        {filtered.map((q, idx) => {
+                          const maxNum = parseInt(q.max_limit.split('/')[1] || q.max_limit.replace(/[^0-9]/g, '') || '100', 10) || 100;
+                          const currentDl = q.current_rate.download;
+                          const currentUl = q.current_rate.upload;
+                          const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
+
+                          let barColor = 'bg-emerald-500';
+                          if (usagePercent > 80) barColor = 'bg-rose-500';
+                          else if (usagePercent > 60) barColor = 'bg-amber-500';
+
+                          return (
+                            <tr key={q.id} className="hover:bg-m3-surface-container-high/40 transition-colors">
+                              {/* Index */}
+                              <td className="py-3 px-3 text-center font-mono font-bold text-m3-on-surface-variant">
+                                <span className="px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-500 font-mono text-[10px]">
+                                  {String(idx + 1).padStart(2, '0')}
+                                </span>
+                              </td>
+
+                              {/* Name */}
+                              <td className="py-3 px-4 font-bold font-mono text-m3-on-surface">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                  <span>{q.name}</span>
+                                </div>
+                              </td>
+
+                              {/* Target Subnet */}
+                              <td className="py-3 px-3 font-mono text-[11px] text-m3-on-surface-variant">
+                                <span className="bg-m3-surface-container-highest px-2 py-0.5 rounded-full border border-m3-outline-variant/30">
+                                  {q.target}
+                                </span>
+                              </td>
+
+                              {/* Limit */}
+                              <td className="py-3 px-3 font-mono font-bold text-amber-600 dark:text-amber-300">
+                                <span className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                  {q.max_limit}
+                                </span>
+                              </td>
+
+                              {/* Tx */}
+                              <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">
+                                <div className="flex items-center gap-1">
+                                  <ArrowUpRight className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                  <span>{formatThroughput(currentUl, queueUnitMode)}</span>
+                                </div>
+                              </td>
+
+                              {/* Rx */}
+                              <td className="py-3 px-4 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                <div className="flex items-center gap-1">
+                                  <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span>{formatThroughput(currentDl, queueUnitMode)}</span>
+                                </div>
+                              </td>
+
+                              {/* Waveform Sparkline */}
+                              <td className="py-3 px-4 w-52">
+                                <div className="w-48">
+                                  <QueueTrafficSparkline
+                                    queueId={q.id}
+                                    downloadRate={currentDl}
+                                    uploadRate={currentUl}
+                                    maxLimitStr={q.max_limit}
+                                    height={32}
+                                    unitMode={queueUnitMode}
+                                    compact={true}
+                                    showBadges={false}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Usage */}
+                              <td className="py-3 px-4 min-w-[120px]">
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-[11px] font-mono font-bold">
+                                    <span className={usagePercent > 80 ? 'text-rose-500' : 'text-m3-on-surface'}>
+                                      {usagePercent}%
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full rounded-full bg-m3-surface-container-highest overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                                      style={{ width: `${usagePercent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Status */}
+                              <td className="py-3 px-3 text-right">
+                                {q.dropped > 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full">
+                                    <AlertCircle className="w-3 h-3" />
+                                    {q.dropped} drop
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Lancar
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mobile Cards (< md) */}
+                <div className="space-y-3 block md:hidden">
+                  {filtered.map((q, idx) => {
+                    const maxNum = parseInt(q.max_limit.split('/')[1] || q.max_limit.replace(/[^0-9]/g, '') || '100', 10) || 100;
+                    const currentDl = q.current_rate.download;
+                    const currentUl = q.current_rate.upload;
+                    const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
+
+                    let barColor = 'bg-emerald-500';
+                    let badgeColor = 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
+                    if (usagePercent > 80) {
+                      barColor = 'bg-rose-500';
+                      badgeColor = 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/20';
+                    } else if (usagePercent > 60) {
+                      barColor = 'bg-amber-500';
+                      badgeColor = 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20';
+                    }
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <div className="font-bold text-sm text-m3-on-surface flex items-center gap-2">
+                            <span>{q.name}</span>
+                            <span className="font-mono text-[10px] text-m3-on-surface-variant bg-m3-surface-container-highest px-2 py-0.5 rounded-full">
+                              {q.target}
+                            </span>
+                          </div>
+
+                          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
+                            {usagePercent}% Utilisasi
+                          </span>
+                        </div>
+
+                        {/* Sparkline */}
+                        <div className="pt-0.5">
+                          <QueueTrafficSparkline
+                            queueId={q.id}
+                            downloadRate={currentDl}
+                            uploadRate={currentUl}
+                            maxLimitStr={q.max_limit}
+                            height={48}
+                            unitMode={queueUnitMode}
+                            showLegend={true}
+                            showBadges={true}
+                          />
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="h-2 w-full bg-m3-surface-container-highest rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                            style={{ width: `${usagePercent}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-m3-on-surface-variant font-mono">
+                          <span>Limit: {q.max_limit}</span>
+                          {q.dropped > 0 ? (
+                            <span className="text-rose-500 font-bold">{q.dropped} packet drops</span>
+                          ) : (
+                            <span className="text-emerald-500">Antrean Normal (0 drop)</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </M3Card>
       )}
 
