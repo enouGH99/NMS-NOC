@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useNms } from '@/lib/store';
+import { QueueTraffic } from '@/lib/types';
 import { M3Card } from '../m3/M3Card';
 import { M3Button } from '../m3/M3Button';
 import { M3Dialog } from '../m3/M3Dialog';
@@ -19,13 +20,15 @@ import {
   LayoutGrid,
   ListFilter,
   CheckCircle2,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { formatThroughput } from '@/lib/utils';
 
 type ThroughputUnitMode = 'auto' | 'mbps' | 'kbps' | 'bps';
 
 export const QueueTrafficChart: React.FC = () => {
-  const { queues, syncQueues, addQueue, devices } = useNms();
+  const { queues, syncQueues, addQueue, updateQueue, deleteQueue, devices } = useNms();
   const [isSyncing, setIsSyncing] = useState(false);
   const [unitMode, setUnitMode] = useState<ThroughputUnitMode>('auto');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
@@ -35,7 +38,13 @@ export const QueueTrafficChart: React.FC = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [queueName, setQueueName] = useState('');
   const [queueTarget, setQueueTarget] = useState('192.168.10.0/24');
-  const [queueMaxLimit, setQueueMaxLimit] = useState('20M/20M');
+  const [queueMaxLimit, setQueueMaxLimit] = useState('40M/40M');
+
+  // Edit Queue Modal
+  const [editingQueue, setEditingQueue] = useState<QueueTraffic | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTarget, setEditTarget] = useState('');
+  const [editMaxLimit, setEditMaxLimit] = useState('');
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -53,12 +62,32 @@ export const QueueTrafficChart: React.FC = () => {
     addQueue({
       name: queueName.trim(),
       target: queueTarget.trim() || '0.0.0.0/0',
-      max_limit: queueMaxLimit.trim() || '20M/20M',
+      max_limit: queueMaxLimit.trim() || '40M/40M',
       device_id: devices[0]?.id,
     });
 
     setQueueName('');
     setAddModalOpen(false);
+  };
+
+  const handleOpenEdit = (q: QueueTraffic) => {
+    setEditingQueue(q);
+    setEditName(q.name);
+    setEditTarget(q.target);
+    setEditMaxLimit(q.max_limit || '40M/40M');
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQueue) return;
+
+    updateQueue(editingQueue.id, {
+      name: editName.trim() || editingQueue.name,
+      target: editTarget.trim() || editingQueue.target,
+      max_limit: editMaxLimit.trim() || editingQueue.max_limit,
+    });
+
+    setEditingQueue(null);
   };
 
   // Filter queues by search query
@@ -71,6 +100,8 @@ export const QueueTrafficChart: React.FC = () => {
       q.max_limit.toLowerCase().includes(query)
     );
   });
+
+  const limitPresets = ['120M/120M', '50M/50M', '40M/40M', '30M/30M', '20M/20M', '10M/10M'];
 
   return (
     <M3Card className="p-4 sm:p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs space-y-4 overflow-hidden">
@@ -212,7 +243,7 @@ export const QueueTrafficChart: React.FC = () => {
         /* ================== ETHERNET-STYLE TABLE VIEW ================== */
         <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[720px]">
+            <table className="w-full text-left text-xs min-w-[760px]">
               <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -223,7 +254,7 @@ export const QueueTrafficChart: React.FC = () => {
                   <th className="py-2.5 px-3">Trafik Rx (DL)</th>
                   <th className="py-2.5 px-3 w-48">Grafik Trafik Live</th>
                   <th className="py-2.5 px-3">Utilisasi</th>
-                  <th className="py-2.5 px-3 text-right">Status</th>
+                  <th className="py-2.5 px-3 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-m3-outline-variant/20">
@@ -320,19 +351,17 @@ export const QueueTrafficChart: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Drop / Status */}
+                      {/* Action */}
                       <td className="py-2 px-3 text-right">
-                        {q.dropped > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full">
-                            <AlertCircle className="w-3 h-3" />
-                            {q.dropped} drops
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Lancar
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(q)}
+                          className="p-1 rounded-m3-md hover:bg-m3-surface-container-highest text-m3-primary transition-colors inline-flex items-center gap-1 text-[11px] font-bold"
+                          title="Ubah Batasan Max Limit / Target Queue"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -378,9 +407,14 @@ export const QueueTrafficChart: React.FC = () => {
                     <span className="font-mono text-[10px] text-m3-on-surface-variant bg-m3-surface-container-highest px-2 py-0.5 rounded-full border border-m3-outline-variant/30">
                       {q.target}
                     </span>
-                    <span className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
-                      {usagePercent}% Utilisasi
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(q)}
+                      className="p-1 rounded-m3-md hover:bg-m3-surface-container-highest text-m3-primary transition-colors"
+                      title="Edit Queue"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -426,17 +460,9 @@ export const QueueTrafficChart: React.FC = () => {
                     <span className="font-bold text-amber-600 dark:text-amber-300">{q.max_limit}</span>
                   </div>
 
-                  {q.dropped > 0 ? (
-                    <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold font-sans">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>{q.dropped} drops</span>
-                    </div>
-                  ) : (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-sans font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Antrean Lancar
-                    </span>
-                  )}
+                  <span className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
+                    {usagePercent}% Utilisasi
+                  </span>
                 </div>
               </div>
             );
@@ -460,17 +486,32 @@ export const QueueTrafficChart: React.FC = () => {
 
           <M3TextField
             label="Target (IP Address / Subnet / Interface)"
-            placeholder="contoh: 192.168.10.0/24 atau wlan1"
+            placeholder="contoh: 192.168.10.0/24 atau bridge-Local"
             value={queueTarget}
             onChange={(e) => setQueueTarget(e.target.value)}
           />
 
-          <M3TextField
-            label="Max Limit (Upload/Download)"
-            placeholder="contoh: 20M/20M atau 100M/100M"
-            value={queueMaxLimit}
-            onChange={(e) => setQueueMaxLimit(e.target.value)}
-          />
+          <div className="space-y-1.5">
+            <M3TextField
+              label="Max Limit (Upload/Download)"
+              placeholder="contoh: 40M/40M atau 120M/120M"
+              value={queueMaxLimit}
+              onChange={(e) => setQueueMaxLimit(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center gap-1 pt-1">
+              <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Preset:</span>
+              {limitPresets.map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setQueueMaxLimit(preset)}
+                  className="px-2 py-0.5 rounded-md bg-m3-surface-container-high hover:bg-m3-primary hover:text-m3-on-primary text-[10px] font-mono font-bold transition-colors"
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-m3-outline-variant/30">
             <M3Button
@@ -490,6 +531,86 @@ export const QueueTrafficChart: React.FC = () => {
           </div>
         </form>
       </M3Dialog>
+
+      {/* Dialog: Edit Simple Queue */}
+      {editingQueue && (
+        <M3Dialog
+          isOpen={!!editingQueue}
+          onClose={() => setEditingQueue(null)}
+          title={`Konfigurasi Queue: ${editingQueue.name}`}
+        >
+          <form onSubmit={handleSaveEdit} className="space-y-4 pt-2">
+            <M3TextField
+              label="Nama Antrean / Queue Name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+
+            <M3TextField
+              label="Target Subnet / Interface"
+              value={editTarget}
+              onChange={(e) => setEditTarget(e.target.value)}
+            />
+
+            <div className="space-y-1.5">
+              <M3TextField
+                label="Max Limit (Upload/Download)"
+                value={editMaxLimit}
+                onChange={(e) => setEditMaxLimit(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Pilihan Cepat:</span>
+                {limitPresets.map(preset => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setEditMaxLimit(preset)}
+                    className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                      editMaxLimit === preset
+                        ? 'bg-amber-500 text-slate-950 font-black'
+                        : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-m3-outline-variant/30">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Hapus antrean ${editingQueue.name}?`)) {
+                    deleteQueue(editingQueue.id);
+                    setEditingQueue(null);
+                  }
+                }}
+                className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 font-bold px-2 py-1 rounded-md hover:bg-rose-500/10 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <M3Button
+                  type="button"
+                  variant="outlined"
+                  onClick={() => setEditingQueue(null)}
+                >
+                  Batal
+                </M3Button>
+                <M3Button
+                  type="submit"
+                  variant="filled"
+                >
+                  Simpan Perubahan
+                </M3Button>
+              </div>
+            </div>
+          </form>
+        </M3Dialog>
+      )}
     </M3Card>
   );
 };

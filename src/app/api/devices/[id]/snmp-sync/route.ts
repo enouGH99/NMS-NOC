@@ -110,21 +110,42 @@ export async function POST(
       if (pollResult.queues.length > 0) {
         try {
           const { queueTraffics } = await import('@/db/schema');
+          
+          // Index existing queues in PostgreSQL by normalized name to preserve user-customized limits
+          const existingDbRows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, id));
+          const existingMap = new Map<string, any>();
+          for (const row of existingDbRows) {
+            existingMap.set(row.name.trim().toLowerCase(), row);
+            existingMap.set(row.id, row);
+          }
+
           await db.delete(queueTraffics).where(eq(queueTraffics.deviceId, id));
           for (let i = 0; i < pollResult.queues.length; i++) {
             const q = pollResult.queues[i];
-            let maxDl = 50;
-            let maxUl = 50;
-            if (q.max_limit) {
+            const normalizedName = q.name.trim().toLowerCase();
+            const existingRecord = existingMap.get(normalizedName) || existingMap.get(q.id);
+
+            let maxDl = 40;
+            let maxUl = 40;
+
+            if (existingRecord && existingRecord.maxLimitDownloadMbps && existingRecord.maxLimitUploadMbps) {
+              maxDl = existingRecord.maxLimitDownloadMbps;
+              maxUl = existingRecord.maxLimitUploadMbps;
+            } else if (q.max_limit) {
               const parts = q.max_limit.split('/');
-              maxUl = parseInt(parts[0], 10) || 50;
-              maxDl = parseInt(parts[1] || parts[0], 10) || 50;
+              maxUl = parseInt(parts[0], 10) || 40;
+              maxDl = parseInt(parts[1] || parts[0], 10) || 40;
             }
+
+            const target = (existingRecord && existingRecord.targetSubnet && existingRecord.targetSubnet.includes('bridge-Server'))
+              ? existingRecord.targetSubnet
+              : q.target;
+
             await db.insert(queueTraffics).values({
               id: q.id,
               deviceId: id,
               name: q.name,
-              targetSubnet: q.target,
+              targetSubnet: target,
               maxLimitDownloadMbps: maxDl,
               maxLimitUploadMbps: maxUl,
               currentDownloadMbps: q.current_rate.download,

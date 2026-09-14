@@ -8,18 +8,23 @@ import { getStatusM3Badge } from '@/lib/m3-theme';
 import { M3Card } from '@/components/m3/M3Card';
 import { M3Button } from '@/components/m3/M3Button';
 import { M3Tabs } from '@/components/m3/M3Tabs';
+import { M3Dialog } from '@/components/m3/M3Dialog';
+import { M3TextField } from '@/components/m3/M3TextField';
 import { PingTestModal } from '@/components/devices/PingTestModal';
 import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { AddEditDeviceModal } from '@/components/devices/AddEditDeviceModal';
 import { SnmpSyncModal } from '@/components/devices/SnmpSyncModal';
 import { InterfaceTable } from '@/components/devices/InterfaceTable';
 import { QueueTrafficSparkline } from '@/components/dashboard/QueueTrafficSparkline';
+import { QueueTraffic } from '@/lib/types';
 import {
   Server,
   ArrowLeft,
   Zap,
   Wrench,
   Edit2,
+  Edit3,
+  Trash2,
   Cpu,
   HardDrive,
   Thermometer,
@@ -49,7 +54,7 @@ import {
 export default function DeviceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces, syncVpnTunnels, syncQueues } = useNms();
+  const { devices, interfaces, queues, vpnTunnels, repairRecords, syncInterfaces, syncVpnTunnels, syncQueues, updateQueue, deleteQueue } = useNms();
 
   const deviceId = params.id as string;
   const device = devices.find((d) => d.id === deviceId);
@@ -64,6 +69,32 @@ export default function DeviceDetailPage() {
   const [isSyncingQueues, setIsSyncingQueues] = useState(false);
   const [queueUnitMode, setQueueUnitMode] = useState<'auto' | 'mbps' | 'kbps' | 'bps'>('auto');
   const [queueSearchQuery, setQueueSearchQuery] = useState('');
+
+  // Edit Queue State
+  const [editingQueue, setEditingQueue] = useState<QueueTraffic | null>(null);
+  const [editQueueName, setEditQueueName] = useState('');
+  const [editQueueTarget, setEditQueueTarget] = useState('');
+  const [editQueueMaxLimit, setEditQueueMaxLimit] = useState('');
+
+  const limitPresets = ['120M/120M', '50M/50M', '40M/40M', '30M/30M', '20M/20M', '10M/10M'];
+
+  const handleOpenEditQueue = (q: QueueTraffic) => {
+    setEditingQueue(q);
+    setEditQueueName(q.name);
+    setEditQueueTarget(q.target);
+    setEditQueueMaxLimit(q.max_limit || '40M/40M');
+  };
+
+  const handleSaveEditQueue = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQueue) return;
+    updateQueue(editingQueue.id, {
+      name: editQueueName.trim() || editingQueue.name,
+      target: editQueueTarget.trim() || editingQueue.target,
+      max_limit: editQueueMaxLimit.trim() || editingQueue.max_limit,
+    });
+    setEditingQueue(null);
+  };
 
   if (!device) {
     return (
@@ -402,7 +433,8 @@ export default function DeviceDetailPage() {
                           <th className="py-3 px-4">Trafik Rx (Download)</th>
                           <th className="py-3 px-4 w-52">Grafik Trafik Realtime</th>
                           <th className="py-3 px-4">Utilisasi</th>
-                          <th className="py-3 px-3 text-right">Status</th>
+                          <th className="py-3 px-3 text-center">Status</th>
+                          <th className="py-3 px-3 text-right">Aksi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-m3-outline-variant/20">
@@ -497,7 +529,7 @@ export default function DeviceDetailPage() {
                               </td>
 
                               {/* Status */}
-                              <td className="py-3 px-3 text-right">
+                              <td className="py-3 px-3 text-center">
                                 {q.dropped > 0 ? (
                                   <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded-full">
                                     <AlertCircle className="w-3 h-3" />
@@ -509,6 +541,18 @@ export default function DeviceDetailPage() {
                                     Lancar
                                   </span>
                                 )}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditQueue(q)}
+                                  className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+                                  title="Edit Limit Queue"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
                               </td>
                             </tr>
                           );
@@ -549,9 +593,19 @@ export default function DeviceDetailPage() {
                             </span>
                           </div>
 
-                          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
-                            {usagePercent}% Utilisasi
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeColor}`}>
+                              {usagePercent}%
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditQueue(q)}
+                              className="p-1 rounded-md text-m3-on-surface-variant hover:text-amber-500 hover:bg-m3-surface-container-highest transition-colors"
+                              title="Edit Queue"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Sparkline */}
@@ -591,6 +645,87 @@ export default function DeviceDetailPage() {
               </>
             );
           })()}
+
+          {/* Edit Queue Dialog Modal */}
+          {editingQueue && (
+            <M3Dialog
+              isOpen={!!editingQueue}
+              onClose={() => setEditingQueue(null)}
+              title={`Edit Simple Queue: ${editingQueue.name}`}
+            >
+              <form onSubmit={handleSaveEditQueue} className="space-y-4 pt-2">
+                <M3TextField
+                  label="Nama Simple Queue"
+                  value={editQueueName}
+                  onChange={(e) => setEditQueueName(e.target.value)}
+                  required
+                />
+
+                <M3TextField
+                  label="Target Subnet / Interface"
+                  value={editQueueTarget}
+                  onChange={(e) => setEditQueueTarget(e.target.value)}
+                />
+
+                <div className="space-y-1.5">
+                  <M3TextField
+                    label="Max Limit (Upload/Download)"
+                    value={editQueueMaxLimit}
+                    onChange={(e) => setEditQueueMaxLimit(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Pilihan Cepat:</span>
+                    {limitPresets.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setEditQueueMaxLimit(preset)}
+                        className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                          editQueueMaxLimit === preset
+                            ? 'bg-amber-500 text-slate-950 font-black'
+                            : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-m3-outline-variant/30">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Hapus antrean ${editingQueue.name}?`)) {
+                        deleteQueue(editingQueue.id);
+                        setEditingQueue(null);
+                      }
+                    }}
+                    className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 font-bold px-2 py-1 rounded-md hover:bg-rose-500/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <M3Button
+                      type="button"
+                      variant="outlined"
+                      onClick={() => setEditingQueue(null)}
+                    >
+                      Batal
+                    </M3Button>
+                    <M3Button
+                      type="submit"
+                      variant="filled"
+                    >
+                      Simpan Perubahan
+                    </M3Button>
+                  </div>
+                </div>
+              </form>
+            </M3Dialog>
+          )}
         </M3Card>
       )}
 

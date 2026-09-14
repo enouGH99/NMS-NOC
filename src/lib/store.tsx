@@ -122,6 +122,8 @@ interface NmsContextType {
   pingDevice: (ip: string) => Promise<{ latency: number; loss: number; success: boolean; packets: number[] }>;
   syncQueues: (deviceId?: string, forceRefresh?: boolean) => Promise<void>;
   addQueue: (queue: any) => void;
+  updateQueue: (id: string, updates: Partial<QueueTraffic>) => void;
+  deleteQueue: (id: string) => void;
   syncInterfaces: (deviceId?: string, forceRefresh?: boolean) => Promise<void>;
   addInterface: (iface: any) => void;
   updateInterface: (id: string, updates: Partial<DeviceInterface>) => void;
@@ -713,6 +715,18 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
   }, [devices, addAuditLog]);
 
+  const updateQueue = useCallback((id: string, updates: Partial<QueueTraffic>) => {
+    setQueues(prev => prev.map(q => (q.id === id ? { ...q, ...updates } : q)));
+    nmsApi.updateQueue({ id, ...updates }).catch(e => console.warn('Failed to persist updateQueue:', e));
+    addAuditLog('UPDATE_QUEUE', `Memperbarui konfigurasi Simple Queue: ${id} (${updates.max_limit || updates.name || ''})`);
+  }, [addAuditLog]);
+
+  const deleteQueue = useCallback((id: string) => {
+    setQueues(prev => prev.filter(q => q.id !== id));
+    nmsApi.deleteQueue(id).catch(e => console.warn('Failed to persist deleteQueue:', e));
+    addAuditLog('DELETE_QUEUE', `Menghapus Simple Queue: ${id}`);
+  }, [addAuditLog]);
+
   const syncVpnTunnels = useCallback(async (deviceId?: string, forceRefresh = true) => {
     try {
       const res: any = await nmsApi.getVpnTunnels(deviceId, forceRefresh);
@@ -1175,6 +1189,8 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pingDevice,
     syncQueues,
     addQueue,
+    updateQueue,
+    deleteQueue,
     syncInterfaces,
     addInterface,
     updateInterface,

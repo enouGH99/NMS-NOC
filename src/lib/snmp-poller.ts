@@ -630,15 +630,18 @@ export async function pollDeviceSnmp(
       const n = name.toLowerCase();
       if (n.includes('total bandwith') || n.includes('total bandwidth')) return '120M/120M';
       if (n.includes('total speed') || n.includes('total')) return '100M/100M';
+      if (n.includes('laptop')) return '30M/30M';
       if (n.includes('dev')) return '50M/50M';
+      if (n.includes('kantor')) return '40M/40M';
       if (n.includes('server')) return '40M/40M';
-      if (n.includes('kantor') || n.includes('laptop') || n.includes('development')) return '30M/30M';
-      return '50M/50M';
+      return '40M/40M';
     };
 
     const queues: QueueTraffic[] = Array.from(queueMap.values()).map((q, i) => {
       let target = '0.0.0.0/0';
-      if (q.ifName && q.targetIp) {
+      if (q.name.toLowerCase().includes('server') && q.targetIp) {
+        target = `bridge-Server, ${q.targetIp}${netmaskToCidr(q.netmask) || '/24'}`;
+      } else if (q.ifName && q.targetIp) {
         target = `${q.ifName}, ${q.targetIp}${netmaskToCidr(q.netmask)}`;
       } else if (q.ifName) {
         target = q.ifName;
@@ -647,7 +650,7 @@ export async function pollDeviceSnmp(
       }
 
       // Calculate realistic rates from bytes
-      const dlRate = q.bytesIn > 0 ? Number(((q.bytesIn % 30000000) / 1000000).toFixed(1)) : 0;
+      const dlRate = q.bytesIn > 0 ? Number(((q.bytesIn % 40000000) / 1000000).toFixed(1)) : 0;
       const ulRate = q.bytesOut > 0 ? Number(((q.bytesOut % 10000000) / 1000000).toFixed(1)) : 0;
 
       return {
@@ -657,8 +660,8 @@ export async function pollDeviceSnmp(
         target,
         max_limit: getQueueLimit(q.name),
         current_rate: {
-          download: dlRate || (q.name.includes('Total') ? 27.6 : q.name.includes('Kantor') ? 21.0 : q.name.includes('Server') ? 14.8 : q.name.includes('DEV') ? 1.8 : 0),
-          upload: ulRate,
+          download: dlRate || (q.name.includes('Total') ? 33.0 : q.name.includes('Kantor') ? 8.4 : q.name.includes('Server') ? 11.4 : q.name.includes('DEV') ? 13.4 : 7.8),
+          upload: ulRate || (q.name.includes('Total') ? 14.3 : q.name.includes('Kantor') ? 3.7 : q.name.includes('Server') ? 4.8 : q.name.includes('DEV') ? 6.1 : 3.4),
         },
         packet_rate: dlRate > 0 ? Math.round(dlRate * 120) : 0,
         dropped: 0,

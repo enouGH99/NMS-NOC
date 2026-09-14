@@ -90,6 +90,8 @@ export const nmsApi = {
     return fetchApi(`/api/queues${query ? `?${query}` : ''}`);
   },
   createQueue: (data: any) => fetchApi('/api/queues', { method: 'POST', body: JSON.stringify(data) }),
+  updateQueue: (data: any) => fetchApi('/api/queues', { method: 'PUT', body: JSON.stringify(data) }),
+  deleteQueue: (id: string) => fetchApi(`/api/queues?id=${id}`, { method: 'DELETE' }),
 
   getInterfaces: (deviceId?: string, refresh?: boolean) => {
     const params = new URLSearchParams();
