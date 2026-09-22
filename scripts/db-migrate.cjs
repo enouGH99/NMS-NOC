@@ -275,7 +275,8 @@ const statements = [
   `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "limit_at_mbps" double precision DEFAULT 10;`,
   `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "queue_kind" text DEFAULT 'tree';`,
   `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "bytes" double precision DEFAULT 0;`,
-  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "packets" double precision DEFAULT 0;`
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "packets" double precision DEFAULT 0;`,
+  `DELETE FROM "queue_traffics" WHERE "queue_kind" = 'simple' OR "name" LIKE '%Laptop%' OR "name" LIKE '%Total Bandwith%';`
 ];
 
 async function runMigrations() {

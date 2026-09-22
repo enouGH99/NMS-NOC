@@ -18,8 +18,23 @@ export async function GET(request: NextRequest) {
         rows = await db.select().from(queueTraffics);
       }
 
-      // If refresh requested OR database empty, poll live queues directly from MikroTik via SNMP
-      if (refresh || rows.length === 0) {
+      // Check if rows contain legacy simple queue records
+      const hasLegacySimpleQueues = rows.length > 0 && rows.some((r: any) =>
+        r.queueKind === 'simple' ||
+        r.name?.includes('Laptop') ||
+        r.name?.includes('Total Bandwith') ||
+        r.targetSubnet?.includes('192.168.3.') ||
+        (r.targetSubnet && r.targetSubnet !== '0.0.0.0/0' && r.targetSubnet !== 'global' && !r.packetMark)
+      );
+
+      // If refresh requested OR database empty OR legacy simple queues detected, poll live Queue Tree directly from MikroTik via SNMP
+      if (refresh || rows.length === 0 || hasLegacySimpleQueues) {
+        if (hasLegacySimpleQueues) {
+          try {
+            await db.delete(queueTraffics);
+          } catch {}
+        }
+
         const routerRows = await db.select().from(devices);
         const targetRouter = deviceId 
           ? routerRows.find(d => d.id === deviceId) 
@@ -97,6 +112,36 @@ export async function GET(request: NextRequest) {
               });
             }
 
+            rows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, targetRouter.id));
+          } else {
+            // Seed standard Queue Tree fallback nodes if router SNMP returned 0 queues
+            const { initialQueues } = await import('@/lib/mock-data');
+            await db.delete(queueTraffics).where(eq(queueTraffics.deviceId, targetRouter.id));
+            for (const q of initialQueues) {
+              const maxLimitNum = parseInt(q.max_limit.replace(/[^0-9]/g, ''), 10) || 40;
+              const limitAtNum = parseInt((q.limit_at || '10M').replace(/[^0-9]/g, ''), 10) || 10;
+              await db.insert(queueTraffics).values({
+                id: q.id,
+                deviceId: targetRouter.id,
+                name: q.name,
+                parent: q.parent || 'global',
+                packetMark: q.packet_mark || 'no-mark',
+                targetSubnet: 'global',
+                maxLimitMbps: maxLimitNum,
+                limitAtMbps: limitAtNum,
+                maxLimitDownloadMbps: maxLimitNum,
+                maxLimitUploadMbps: maxLimitNum,
+                currentDownloadMbps: q.current_rate.download,
+                currentUploadMbps: q.current_rate.upload,
+                packetDropsPerSec: q.dropped,
+                queueType: q.queue_type || 'default',
+                priority: q.priority || 8,
+                queueKind: 'tree',
+                bytes: q.bytes || 0,
+                packets: q.packets || 0,
+                updatedAt: new Date(),
+              });
+            }
             rows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, targetRouter.id));
           }
         }
