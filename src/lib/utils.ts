@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { QueueTraffic } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -132,4 +133,72 @@ export function downloadCsv(filename: string, rows: Record<string, any>[]) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+export interface HierarchyQueueItem extends QueueTraffic {
+  depth: number;
+  isLeaf: boolean;
+  hasChildren: boolean;
+  childrenCount: number;
+  parentRef?: string;
+  isLastChild?: boolean;
+}
+
+/**
+ * Builds a multi-level tree hierarchy for MikroTik Queue Tree nodes.
+ * Flattens the tree in Depth-First Search order so child nodes appear immediately
+ * under their respective parents with correct indentation depth levels.
+ */
+export function buildQueueHierarchy(queues: QueueTraffic[]): HierarchyQueueItem[] {
+  if (!queues || queues.length === 0) return [];
+
+  const mapByName = new Map<string, QueueTraffic>();
+  const childrenMap = new Map<string, QueueTraffic[]>();
+
+  for (const q of queues) {
+    const key = q.name.trim().toLowerCase();
+    mapByName.set(key, q);
+    childrenMap.set(key, []);
+  }
+
+  const roots: QueueTraffic[] = [];
+  for (const q of queues) {
+    const parentKey = (q.parent || '').trim().toLowerCase();
+    if (!parentKey || parentKey === 'global' || parentKey === 'none' || parentKey === '0' || !mapByName.has(parentKey)) {
+      roots.push(q);
+    } else {
+      childrenMap.get(parentKey)?.push(q);
+    }
+  }
+
+  // Sort roots: Priority (1..8) first, then natural numeric name
+  roots.sort((a, b) => (a.priority || 8) - (b.priority || 8) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  const result: HierarchyQueueItem[] = [];
+
+  function traverse(node: QueueTraffic, depth: number, isLast: boolean) {
+    const nodeKey = node.name.trim().toLowerCase();
+    const children = childrenMap.get(nodeKey) || [];
+    children.sort((a, b) => (a.priority || 8) - (b.priority || 8) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+    result.push({
+      ...node,
+      depth,
+      isLeaf: children.length === 0,
+      hasChildren: children.length > 0,
+      childrenCount: children.length,
+      parentRef: node.parent,
+      isLastChild: isLast,
+    });
+
+    children.forEach((child, idx) => {
+      traverse(child, depth + 1, idx === children.length - 1);
+    });
+  }
+
+  roots.forEach((root, idx) => {
+    traverse(root, 0, idx === roots.length - 1);
+  });
+
+  return result;
 }

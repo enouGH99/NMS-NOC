@@ -134,21 +134,28 @@ export const deviceInterfaces = pgTable('device_interfaces', {
 });
 
 // ----------------------------------------------------
-// 5. MIKROTIK SIMPLE QUEUES (Bandwidth Management)
+// 5. MIKROTIK QUEUE TREE & BANDWIDTH MANAGEMENT
 // ----------------------------------------------------
 
 export const queueTraffics = pgTable('queue_traffics', {
   id: text('id').primaryKey(),
   deviceId: text('device_id').notNull().references(() => devices.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  targetSubnet: text('target_subnet').notNull(),
-  maxLimitDownloadMbps: doublePrecision('max_limit_download_mbps').notNull(),
-  maxLimitUploadMbps: doublePrecision('max_limit_upload_mbps').notNull(),
+  parent: text('parent').default('global'),
+  packetMark: text('packet_mark').default('no-mark'),
+  targetSubnet: text('target_subnet').default('0.0.0.0/0'),
+  maxLimitMbps: doublePrecision('max_limit_mbps').default(40),
+  limitAtMbps: doublePrecision('limit_at_mbps').default(10),
+  maxLimitDownloadMbps: doublePrecision('max_limit_download_mbps').default(40).notNull(),
+  maxLimitUploadMbps: doublePrecision('max_limit_upload_mbps').default(40).notNull(),
   currentDownloadMbps: doublePrecision('current_download_mbps').default(0).notNull(),
   currentUploadMbps: doublePrecision('current_upload_mbps').default(0).notNull(),
   packetDropsPerSec: integer('packet_drops_per_sec').default(0).notNull(),
-  queueType: text('queue_type').default('default-small').notNull(),
+  queueType: text('queue_type').default('pcq-download-default').notNull(),
   priority: integer('priority').default(8).notNull(),
+  queueKind: text('queue_kind').default('tree').notNull(), // 'tree' | 'simple'
+  bytes: doublePrecision('bytes').default(0),
+  packets: doublePrecision('packets').default(0),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

@@ -49,7 +49,42 @@ export async function GET(
           created_at: d.createdAt ? new Date(d.createdAt).toISOString() : new Date().toISOString(),
         };
         interfaces = await db.select().from(deviceInterfaces).where(eq(deviceInterfaces.deviceId, id));
-        queues = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, id));
+        const rawQueues = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, id));
+        queues = rawQueues.map((q: any) => {
+          const isUpload = (q.name || '').toLowerCase().includes('upload') || ((q.parent || '').toLowerCase().includes('upload'));
+          const defaultQueueType = isUpload ? 'pcq-upload-default' : 'pcq-download-default';
+
+          let maxLimitStr = '40M';
+          if (q.maxLimitMbps) {
+            maxLimitStr = `${q.maxLimitMbps}M`;
+          } else if (q.maxLimitDownloadMbps && q.maxLimitUploadMbps) {
+            maxLimitStr = `${q.maxLimitUploadMbps}M/${q.maxLimitDownloadMbps}M`;
+          }
+
+          const limitAtStr = q.limitAtMbps ? `${q.limitAtMbps}M` : '10M';
+
+          return {
+            id: q.id,
+            device_id: q.deviceId || q.device_id,
+            name: q.name,
+            parent: q.parent || 'global',
+            packet_mark: q.packetMark || q.packet_mark || 'no-mark',
+            target: q.parent || q.targetSubnet || 'global',
+            max_limit: maxLimitStr,
+            limit_at: limitAtStr,
+            current_rate: {
+              upload: Number(q.currentUploadMbps ?? q.current_rate?.upload ?? 0),
+              download: Number(q.currentDownloadMbps ?? q.current_rate?.download ?? 0),
+            },
+            packet_rate: 120,
+            dropped: Number(q.packetDropsPerSec ?? q.dropped ?? 0),
+            priority: q.priority || 8,
+            queue_type: q.queueType || q.queue_type || defaultQueueType,
+            bytes: Number(q.bytes || 0),
+            packets: Number(q.packets || 0),
+            kind: q.queueKind || q.kind || 'tree',
+          };
+        });
         tunnels = (await db.select().from(vpnTunnels).where(eq(vpnTunnels.deviceId, id))).map((v: any) => ({
           id: v.id,
           device_id: v.deviceId || v.device_id,

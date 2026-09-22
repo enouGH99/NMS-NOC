@@ -481,9 +481,11 @@ async function runAllIntegrationTests() {
   });
 
   // ----------------------------------------------------
-  // 12. MIKROTIK SIMPLE QUEUES API
+  // 12. MIKROTIK QUEUE TREE API
   // ----------------------------------------------------
-  await runTest('Simple Queues API', 'GET /api/queues returns queue list', async () => {
+  let createdQueueId = '';
+
+  await runTest('Queue Tree API', 'GET /api/queues returns Queue Tree list from PostgreSQL or Router', async () => {
     const req = createRequest('/api/queues');
     const res = await QueuesRoute.GET(req);
     assert(res.status === 200, `Expected status 200, got ${res.status}`);
@@ -492,19 +494,57 @@ async function runAllIntegrationTests() {
     assert(Array.isArray(json.data), 'Expected queues array');
   });
 
-  await runTest('Simple Queues API', 'POST /api/queues creates a new queue bandwidth limit', async () => {
+  await runTest('Queue Tree API', 'POST /api/queues creates a new Queue Tree entry with parent, packet_mark, CIR & MIR', async () => {
     const payload = {
-      name: 'WiFi-Tamu',
-      target: '192.168.10.0/24',
-      max_limit: '20M/20M',
+      name: 'WiFi-Tamu-Download',
+      parent: 'Total-Download',
+      packet_mark: 'guest-in_pkt',
+      max_limit: '25M',
+      limit_at: '5M',
+      priority: 7,
+      queue_type: 'pcq-download-default',
     };
     const req = createRequest('/api/queues', 'POST', payload);
     const res = await QueuesRoute.POST(req);
-    assert(res.status === 201 || res.status === 400, `Expected status 201 or 400, got ${res.status}`);
     const json = await res.json();
-    if (res.status === 201) {
+    if (res.status !== 201) {
+      console.error('POST /api/queues error:', json);
+    }
+    assert(res.status === 201, `Expected status 201, got ${res.status}: ${json.error || ''}`);
+    assert(json.success === true, 'Expected success === true');
+    assert(json.data.name === 'WiFi-Tamu-Download', 'Expected queue name to match');
+    assert(json.data.parent === 'Total-Download', 'Expected parent to match');
+    assert(json.data.packet_mark === 'guest-in_pkt', 'Expected packet_mark to match');
+    assert(json.data.priority === 7, 'Expected priority to match');
+    createdQueueId = json.data.id;
+  });
+
+  await runTest('Queue Tree API', 'PUT /api/queues updates Queue Tree limits & priority', async () => {
+    const targetId = createdQueueId || 'q-1';
+    const payload = {
+      id: targetId,
+      max_limit: '35M',
+      limit_at: '10M',
+      priority: 6,
+    };
+    const req = createRequest('/api/queues', 'PUT', payload);
+    const res = await QueuesRoute.PUT(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(json.data.max_limit === '35M', 'Expected max_limit 35M');
+    assert(json.data.limit_at === '10M', 'Expected limit_at 10M');
+    assert(json.data.priority === 6, 'Expected priority 6');
+  });
+
+  await runTest('Queue Tree API', 'DELETE /api/queues removes queue by ID', async () => {
+    const targetId = createdQueueId;
+    if (targetId) {
+      const req = createRequest(`/api/queues?id=${targetId}`, 'DELETE');
+      const res = await QueuesRoute.DELETE(req);
+      assert(res.status === 200, `Expected status 200, got ${res.status}`);
+      const json = await res.json();
       assert(json.success === true, 'Expected success === true');
-      assert(json.data.name === 'WiFi-Tamu', 'Expected queue name match');
     }
   });
 

@@ -103,14 +103,21 @@ const statements = [
     "id" text PRIMARY KEY NOT NULL,
     "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
     "name" text NOT NULL,
-    "target_subnet" text NOT NULL,
-    "max_limit_download_mbps" double precision NOT NULL,
-    "max_limit_upload_mbps" double precision NOT NULL,
+    "parent" text DEFAULT 'global',
+    "packet_mark" text DEFAULT 'no-mark',
+    "target_subnet" text DEFAULT '0.0.0.0/0',
+    "max_limit_mbps" double precision DEFAULT 40,
+    "limit_at_mbps" double precision DEFAULT 10,
+    "max_limit_download_mbps" double precision DEFAULT 40 NOT NULL,
+    "max_limit_upload_mbps" double precision DEFAULT 40 NOT NULL,
     "current_download_mbps" double precision DEFAULT 0 NOT NULL,
     "current_upload_mbps" double precision DEFAULT 0 NOT NULL,
     "packet_drops_per_sec" integer DEFAULT 0 NOT NULL,
-    "queue_type" text DEFAULT 'default-small' NOT NULL,
+    "queue_type" text DEFAULT 'pcq-download-default' NOT NULL,
     "priority" integer DEFAULT 8 NOT NULL,
+    "queue_kind" text DEFAULT 'tree' NOT NULL,
+    "bytes" double precision DEFAULT 0,
+    "packets" double precision DEFAULT 0,
     "updated_at" timestamp DEFAULT now() NOT NULL
   );`,
 
@@ -260,7 +267,15 @@ const statements = [
     "expires_at" timestamp NOT NULL,
     "created_at" timestamp DEFAULT now() NOT NULL,
     "updated_at" timestamp DEFAULT now() NOT NULL
-  );`
+  );`,
+
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "parent" text DEFAULT 'global';`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "packet_mark" text DEFAULT 'no-mark';`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "max_limit_mbps" double precision DEFAULT 40;`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "limit_at_mbps" double precision DEFAULT 10;`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "queue_kind" text DEFAULT 'tree';`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "bytes" double precision DEFAULT 0;`,
+  `ALTER TABLE "queue_traffics" ADD COLUMN IF NOT EXISTS "packets" double precision DEFAULT 0;`
 ];
 
 async function runMigrations() {

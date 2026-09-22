@@ -466,20 +466,24 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setQueues(prevQueues => {
         if (prevQueues.length === 0) return prevQueues;
         return prevQueues.map(q => {
-          const maxParts = q.max_limit.split('/');
-          const maxUl = parseInt(maxParts[0], 10) || 20;
-          const maxDl = parseInt(maxParts[1] || maxParts[0], 10) || 20;
-          const dlJitter = (Math.random() - 0.5) * 1.5;
-          const ulJitter = (Math.random() - 0.5) * 0.5;
-          const dl = Math.max(0.1, Number(((maxDl * 0.28) + dlJitter).toFixed(1)));
-          const ul = Math.max(0.05, Number(((maxUl * 0.12) + ulJitter).toFixed(1)));
-          return {
-            ...q,
-            current_rate: {
-              download: dl,
-              upload: ul,
-            },
-          };
+          const maxNum = parseInt(String(q.max_limit).replace(/[^0-9]/g, ''), 10) || 40;
+          const isUpload = q.name.toLowerCase().includes('upload') || q.name.toLowerCase().includes('ul') || (q.packet_mark || '').toLowerCase().includes('out') || (q.parent || '').toLowerCase().includes('upload');
+          
+          if (isUpload) {
+            const ulJitter = (Math.random() - 0.5) * 0.8;
+            const ul = Math.max(0.1, Number(((maxNum * 0.22) + ulJitter).toFixed(1)));
+            return {
+              ...q,
+              current_rate: { download: 0, upload: ul },
+            };
+          } else {
+            const dlJitter = (Math.random() - 0.5) * 1.8;
+            const dl = Math.max(0.2, Number(((maxNum * 0.28) + dlJitter).toFixed(1)));
+            return {
+              ...q,
+              current_rate: { download: dl, upload: 0 },
+            };
+          }
         });
       });
 
@@ -693,38 +697,45 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else if (res && Array.isArray(res.data)) {
         setQueues(res.data);
       }
-      addAuditLog('SYNC_QUEUES', 'Menyinkronkan daftar Simple Queue dari MikroTik');
+      addAuditLog('SYNC_QUEUES', 'Menyinkronkan daftar antrean Queue Tree dari MikroTik');
     } catch (err) {
       console.warn('Failed to sync queues:', err);
     }
   }, [addAuditLog]);
 
   const addQueue = useCallback((qData: any) => {
+    const isUpload = (qData.name || '').toLowerCase().includes('upload') || (qData.name || '').toLowerCase().includes('ul') || (qData.parent || '').toLowerCase().includes('upload');
     const created: QueueTraffic = {
-      id: qData.id || `q-${Date.now()}`,
+      id: qData.id || `qt-${Date.now()}`,
       device_id: qData.device_id || (devices[0]?.id || 'dev-1'),
       name: qData.name,
-      target: qData.target || '0.0.0.0/0',
-      max_limit: qData.max_limit || '20M/20M',
-      current_rate: qData.current_rate || { upload: 0.5, download: 2.5 },
+      parent: qData.parent || 'global',
+      packet_mark: qData.packet_mark || 'no-mark',
+      target: qData.target || qData.parent || 'global',
+      max_limit: qData.max_limit || '40M',
+      limit_at: qData.limit_at || '10M',
+      current_rate: qData.current_rate || (isUpload ? { upload: 2.5, download: 0 } : { upload: 0, download: 4.5 }),
       packet_rate: 120,
       dropped: 0,
+      priority: qData.priority || 8,
+      queue_type: qData.queue_type || (isUpload ? 'pcq-upload-default' : 'pcq-download-default'),
+      kind: 'tree',
     };
     setQueues(prev => [created, ...prev]);
     nmsApi.createQueue(created).catch(e => console.warn('Failed to persist createQueue:', e));
-    addAuditLog('ADD_QUEUE', `Menambahkan Simple Queue: ${created.name} (${created.target})`);
+    addAuditLog('ADD_QUEUE_TREE', `Menambahkan Queue Tree: ${created.name} (Parent: ${created.parent}, Mark: ${created.packet_mark})`);
   }, [devices, addAuditLog]);
 
   const updateQueue = useCallback((id: string, updates: Partial<QueueTraffic>) => {
     setQueues(prev => prev.map(q => (q.id === id ? { ...q, ...updates } : q)));
     nmsApi.updateQueue({ id, ...updates }).catch(e => console.warn('Failed to persist updateQueue:', e));
-    addAuditLog('UPDATE_QUEUE', `Memperbarui konfigurasi Simple Queue: ${id} (${updates.max_limit || updates.name || ''})`);
+    addAuditLog('UPDATE_QUEUE_TREE', `Memperbarui konfigurasi Queue Tree: ${id} (${updates.max_limit || updates.name || ''})`);
   }, [addAuditLog]);
 
   const deleteQueue = useCallback((id: string) => {
     setQueues(prev => prev.filter(q => q.id !== id));
     nmsApi.deleteQueue(id).catch(e => console.warn('Failed to persist deleteQueue:', e));
-    addAuditLog('DELETE_QUEUE', `Menghapus Simple Queue: ${id}`);
+    addAuditLog('DELETE_QUEUE_TREE', `Menghapus Queue Tree ID: ${id}`);
   }, [addAuditLog]);
 
   const syncVpnTunnels = useCallback(async (deviceId?: string, forceRefresh = true) => {

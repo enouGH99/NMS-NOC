@@ -106,7 +106,7 @@ export async function POST(
         }
       }
 
-      // Sync Simple Queues if found
+      // Sync Queue Tree / Queues if found
       if (pollResult.queues.length > 0) {
         try {
           const { queueTraffics } = await import('@/db/schema');
@@ -125,34 +125,47 @@ export async function POST(
             const normalizedName = q.name.trim().toLowerCase();
             const existingRecord = existingMap.get(normalizedName) || existingMap.get(q.id);
 
+            let maxLimitStr = q.max_limit || '40M';
+            let limitAtStr = q.limit_at || '10M';
+            let priority = q.priority || 8;
+            let queueType = q.queue_type || 'pcq-download-default';
+
             let maxDl = 40;
             let maxUl = 40;
 
-            if (existingRecord && existingRecord.maxLimitDownloadMbps && existingRecord.maxLimitUploadMbps) {
-              maxDl = existingRecord.maxLimitDownloadMbps;
-              maxUl = existingRecord.maxLimitUploadMbps;
+            if (existingRecord) {
+              if (existingRecord.maxLimitDownloadMbps) maxDl = existingRecord.maxLimitDownloadMbps;
+              if (existingRecord.maxLimitUploadMbps) maxUl = existingRecord.maxLimitUploadMbps;
+              if (existingRecord.priority) priority = existingRecord.priority;
+              if (existingRecord.queueType) queueType = existingRecord.queueType;
             } else if (q.max_limit) {
               const parts = q.max_limit.split('/');
               maxUl = parseInt(parts[0], 10) || 40;
               maxDl = parseInt(parts[1] || parts[0], 10) || 40;
             }
 
-            const target = (existingRecord && existingRecord.targetSubnet && existingRecord.targetSubnet.includes('bridge-Server'))
-              ? existingRecord.targetSubnet
-              : q.target;
+            const maxLimitNum = parseInt(maxLimitStr.replace(/[^0-9]/g, ''), 10) || 40;
+            const limitAtNum = parseInt(limitAtStr.replace(/[^0-9]/g, ''), 10) || 10;
 
             await db.insert(queueTraffics).values({
               id: q.id,
               deviceId: id,
               name: q.name,
-              targetSubnet: target,
+              parent: q.parent || existingRecord?.parent || 'global',
+              packetMark: q.packet_mark || existingRecord?.packetMark || 'no-mark',
+              targetSubnet: q.target || existingRecord?.targetSubnet || '0.0.0.0/0',
+              maxLimitMbps: maxLimitNum,
+              limitAtMbps: limitAtNum,
               maxLimitDownloadMbps: maxDl,
               maxLimitUploadMbps: maxUl,
               currentDownloadMbps: q.current_rate.download,
               currentUploadMbps: q.current_rate.upload,
               packetDropsPerSec: q.dropped,
-              queueType: 'default-small',
-              priority: i + 1,
+              queueType,
+              priority,
+              queueKind: q.kind || 'tree',
+              bytes: q.bytes || 0,
+              packets: q.packets || 0,
               updatedAt: new Date(),
             });
           }

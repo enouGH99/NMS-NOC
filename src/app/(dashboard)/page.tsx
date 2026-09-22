@@ -170,8 +170,8 @@ export default function DashboardPage() {
               },
               {
                 key: 'simple_queues' as const,
-                title: 'Manajemen Bandwidth Simple Queue',
-                desc: 'Utilisasi bandwidth dan pembagian kuota per divisi/subnet',
+                title: 'Manajemen Bandwidth Queue Tree',
+                desc: 'Pohon hierarki antrean bandwidth, Packet Mark Mangle, & alokasi CIR/MIR',
               },
               {
                 key: 'vpn_status' as const,

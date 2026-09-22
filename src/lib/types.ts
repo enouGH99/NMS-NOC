@@ -76,11 +76,19 @@ export interface QueueTraffic {
   id: string;
   device_id: string;
   name: string;
-  target: string; // IP or subnet
-  max_limit: string; // e.g. "50M/50M"
+  parent?: string; // e.g. "global", "Total-Download", "Total-Upload", "ether1"
+  packet_mark?: string; // e.g. "dev-in_pkt", "kantor-in_pkt", "no-mark"
+  target: string; // IP, subnet, or parent node
+  max_limit: string; // e.g. "50M" or "50M/50M"
+  limit_at?: string; // e.g. "20M" (CIR guaranteed bandwidth)
   current_rate: { upload: number; download: number }; // Mbps
   packet_rate: number;
   dropped: number;
+  priority?: number; // 1-8 (default: 8)
+  queue_type?: string; // e.g. "pcq-download-default", "pcq-upload-default", "default"
+  bytes?: number;
+  packets?: number;
+  kind?: 'tree' | 'simple';
 }
 
 export interface VpnTunnel {

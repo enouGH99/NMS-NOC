@@ -42,8 +42,11 @@ import {
   Gauge,
   Search,
   AlertCircle,
+  FolderTree,
+  Tag,
+  CornerDownRight,
 } from 'lucide-react';
-import { formatBytes, formatMbps, formatThroughput, formatDate } from '@/lib/utils';
+import { formatBytes, formatMbps, formatThroughput, formatDate, buildQueueHierarchy } from '@/lib/utils';
 
 import {
   generateDefaultInterfaces,
@@ -70,19 +73,28 @@ export default function DeviceDetailPage() {
   const [queueUnitMode, setQueueUnitMode] = useState<'auto' | 'mbps' | 'kbps' | 'bps'>('auto');
   const [queueSearchQuery, setQueueSearchQuery] = useState('');
 
-  // Edit Queue State
+  // Edit Queue State (Queue Tree)
   const [editingQueue, setEditingQueue] = useState<QueueTraffic | null>(null);
   const [editQueueName, setEditQueueName] = useState('');
-  const [editQueueTarget, setEditQueueTarget] = useState('');
+  const [editQueueParent, setEditQueueParent] = useState('none');
+  const [editQueuePacketMark, setEditQueuePacketMark] = useState('');
   const [editQueueMaxLimit, setEditQueueMaxLimit] = useState('');
+  const [editQueueLimitAt, setEditQueueLimitAt] = useState('');
+  const [editQueuePriority, setEditQueuePriority] = useState<number>(8);
+  const [editQueueType, setEditQueueType] = useState('default');
 
-  const limitPresets = ['120M/120M', '50M/50M', '40M/40M', '30M/30M', '20M/20M', '10M/10M'];
+  const limitPresets = ['100M', '50M', '40M', '30M', '20M', '10M', '5M'];
 
   const handleOpenEditQueue = (q: QueueTraffic) => {
     setEditingQueue(q);
     setEditQueueName(q.name);
-    setEditQueueTarget(q.target);
-    setEditQueueMaxLimit(q.max_limit || '40M/40M');
+    setEditQueueParent(q.parent || 'none');
+    setEditQueuePacketMark(q.packet_mark || '');
+    setEditQueueMaxLimit(q.max_limit || '40M');
+    setEditQueueLimitAt(q.limit_at || '0');
+    setEditQueuePriority(q.priority ?? 8);
+    const isUpload = q.name.toLowerCase().includes('upload') || (q.parent && q.parent.toLowerCase().includes('upload'));
+    setEditQueueType(q.queue_type || (isUpload ? 'pcq-upload-default' : 'pcq-download-default'));
   };
 
   const handleSaveEditQueue = (e: React.FormEvent) => {
@@ -90,8 +102,13 @@ export default function DeviceDetailPage() {
     if (!editingQueue) return;
     updateQueue(editingQueue.id, {
       name: editQueueName.trim() || editingQueue.name,
-      target: editQueueTarget.trim() || editingQueue.target,
+      parent: editQueueParent.trim() || 'none',
+      packet_mark: editQueuePacketMark.trim() || undefined,
       max_limit: editQueueMaxLimit.trim() || editingQueue.max_limit,
+      limit_at: editQueueLimitAt.trim() || undefined,
+      priority: Number(editQueuePriority) || 8,
+      queue_type: editQueueType.trim() || undefined,
+      target: editQueuePacketMark.trim() ? `mark:${editQueuePacketMark.trim()}` : editingQueue.target,
     });
     setEditingQueue(null);
   };
@@ -212,7 +229,7 @@ export default function DeviceDetailPage() {
           tabs={[
             { id: 'overview', label: 'Ringkasan & Hardware', icon: <Server className="w-4 h-4" /> },
             { id: 'interfaces', label: `Interface Port (${deviceInterfaces.length})`, icon: <Layers className="w-4 h-4" /> },
-            { id: 'queues', label: `Bandwidth Queues (${deviceQueues.length})`, icon: <SlidersHorizontal className="w-4 h-4" /> },
+            { id: 'queues', label: `Bandwidth Queue Tree (${deviceQueues.length})`, icon: <SlidersHorizontal className="w-4 h-4" /> },
             { id: 'vpns', label: `VPN Tunnels (${deviceVpns.length})`, icon: <ShieldCheck className="w-4 h-4" /> },
             { id: 'repairs', label: `Riwayat Perbaikan (${deviceRepairs.length})`, icon: <Wrench className="w-4 h-4" /> },
           ]}
@@ -329,14 +346,14 @@ export default function DeviceDetailPage() {
               <div className="flex items-center gap-2">
                 <h3 className="text-base sm:text-lg font-extrabold text-m3-on-surface flex items-center gap-2">
                   <SlidersHorizontal className="w-5 h-5 text-m3-primary" />
-                  Daftar Bandwidth Simple Queue MikroTik
+                  Daftar Bandwidth Queue Tree MikroTik
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-m3-surface-container-highest text-m3-primary border border-m3-outline-variant/30">
-                  {deviceQueues.length} Total Antrean
+                  {deviceQueues.length} Total Antrean Tree
                 </span>
               </div>
               <p className="text-xs text-m3-on-surface-variant mt-1">
-                Monitoring limit kuota, utilisasi beban, packet drop, dan grafik spektrum trafik live Rx/Tx
+                Hierarki antrean parent-child, packet mark mangle, alokasi CIR (limit-at), MIR (max-limit), dan grafik live
               </p>
             </div>
 
@@ -355,7 +372,7 @@ export default function DeviceDetailPage() {
                 }}
                 icon={<Radio className="w-4 h-4" />}
               >
-                {isSyncingQueues ? 'Menyinkronkan Queue...' : 'Segarkan Simple Queue (SNMP)'}
+                {isSyncingQueues ? 'Menyinkronkan Queue Tree...' : 'Segarkan Queue Tree (SNMP)'}
               </M3Button>
             </div>
           </div>
@@ -385,11 +402,11 @@ export default function DeviceDetailPage() {
             </div>
 
             {/* Search Input */}
-            <div className="relative min-w-[220px]">
+            <div className="relative min-w-[240px]">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-m3-on-surface-variant" />
               <input
                 type="text"
-                placeholder="Cari antrean atau subnet target..."
+                placeholder="Cari antrean, parent, packet mark..."
                 value={queueSearchQuery}
                 onChange={(e) => setQueueSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 rounded-m3-xl bg-m3-surface-container-lowest border border-m3-outline-variant/30 text-xs text-m3-on-surface focus:outline-hidden focus:border-m3-primary font-mono placeholder:font-sans"
@@ -399,20 +416,23 @@ export default function DeviceDetailPage() {
 
           {/* Filtered Queues */}
           {(() => {
-            const filtered = deviceQueues.filter((q) => {
+            const hierarchical = buildQueueHierarchy(deviceQueues);
+            const filtered = hierarchical.filter((q) => {
               if (!queueSearchQuery.trim()) return true;
               const term = queueSearchQuery.toLowerCase();
               return (
                 q.name.toLowerCase().includes(term) ||
-                q.target.toLowerCase().includes(term) ||
-                q.max_limit.toLowerCase().includes(term)
+                (q.parent && q.parent.toLowerCase().includes(term)) ||
+                (q.packet_mark && q.packet_mark.toLowerCase().includes(term)) ||
+                q.max_limit.toLowerCase().includes(term) ||
+                q.target.toLowerCase().includes(term)
               );
             });
 
             if (filtered.length === 0) {
               return (
                 <div className="text-center py-10 text-xs text-m3-on-surface-variant">
-                  Tidak ada Simple Queue yang cocok dengan kata kunci.
+                  Tidak ada antrean Queue Tree yang cocok dengan kata kunci pencarian.
                 </div>
               );
             }
@@ -422,16 +442,16 @@ export default function DeviceDetailPage() {
                 {/* Desktop Full Table (>= md) */}
                 <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest hidden md:block">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs min-w-[850px]">
+                    <table className="w-full text-left text-xs min-w-[900px]">
                       <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider">
                         <tr>
-                          <th className="py-3 px-3 w-12 text-center">#</th>
-                          <th className="py-3 px-4">Nama Simple Queue</th>
-                          <th className="py-3 px-3">Target Subnet / IP</th>
-                          <th className="py-3 px-3">Limit Kuota (Max)</th>
-                          <th className="py-3 px-4">Trafik Tx (Upload)</th>
-                          <th className="py-3 px-4">Trafik Rx (Download)</th>
-                          <th className="py-3 px-4 w-52">Grafik Trafik Realtime</th>
+                          <th className="py-3 px-3 w-10 text-center">#</th>
+                          <th className="py-3 px-4">Nama Antrean (Queue Tree)</th>
+                          <th className="py-3 px-3">Induk (Parent)</th>
+                          <th className="py-3 px-3">Packet Mark (Mangle)</th>
+                          <th className="py-3 px-3">Limit (Max / CIR)</th>
+                          <th className="py-3 px-4">Trafik Tx / Rx</th>
+                          <th className="py-3 px-4 w-48">Grafik Realtime</th>
                           <th className="py-3 px-4">Utilisasi</th>
                           <th className="py-3 px-3 text-center">Status</th>
                           <th className="py-3 px-3 text-right">Aksi</th>
@@ -439,65 +459,119 @@ export default function DeviceDetailPage() {
                       </thead>
                       <tbody className="divide-y divide-m3-outline-variant/20">
                         {filtered.map((q, idx) => {
-                          const maxNum = parseInt(q.max_limit.split('/')[1] || q.max_limit.replace(/[^0-9]/g, '') || '100', 10) || 100;
+                          const maxNum = parseInt(String(q.max_limit).replace(/[^0-9]/g, ''), 10) || 40;
                           const currentDl = q.current_rate.download;
                           const currentUl = q.current_rate.upload;
-                          const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
+                          const activeRate = currentDl > 0 ? currentDl : currentUl;
+                          const usagePercent = Math.min(100, Math.round((activeRate / maxNum) * 100));
+                          const isChild = q.depth > 0 || (q.parent && q.parent !== 'global' && q.parent !== 'none');
 
                           let barColor = 'bg-emerald-500';
                           if (usagePercent > 80) barColor = 'bg-rose-500';
                           else if (usagePercent > 60) barColor = 'bg-amber-500';
 
                           return (
-                            <tr key={q.id} className="hover:bg-m3-surface-container-high/40 transition-colors">
+                            <tr
+                              key={q.id}
+                              className={`hover:bg-m3-surface-container-high/40 transition-colors ${
+                                q.depth === 0 ? 'bg-m3-surface-container-high/30 font-semibold' : ''
+                              }`}
+                            >
                               {/* Index */}
                               <td className="py-3 px-3 text-center font-mono font-bold text-m3-on-surface-variant">
-                                <span className="px-1.5 py-0.5 rounded-sm bg-emerald-500/10 text-emerald-500 font-mono text-[10px]">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-sm font-mono text-[10px] ${
+                                    q.depth === 0
+                                      ? 'bg-m3-primary/15 text-m3-primary font-bold'
+                                      : 'bg-m3-surface-container-highest text-m3-on-surface-variant'
+                                  }`}
+                                >
                                   {String(idx + 1).padStart(2, '0')}
                                 </span>
                               </td>
 
-                              {/* Name */}
+                              {/* Name with Tree branch indent */}
                               <td className="py-3 px-4 font-bold font-mono text-m3-on-surface">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                  <span>{q.name}</span>
+                                <div className="flex items-center gap-1.5" style={{ paddingLeft: `${q.depth * 16}px` }}>
+                                  {q.depth === 0 ? (
+                                    <Layers className="w-4 h-4 text-m3-primary shrink-0" />
+                                  ) : q.depth === 1 ? (
+                                    <CornerDownRight className="w-3.5 h-3.5 text-m3-primary/70 shrink-0" />
+                                  ) : (
+                                    <CornerDownRight className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                                  )}
+                                  <span className="truncate max-w-[190px]">{q.name}</span>
+                                  {q.priority && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded-sm bg-m3-surface-container-highest text-m3-on-surface-variant border border-m3-outline-variant/30 font-mono">
+                                      P:{q.priority}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
-                              {/* Target Subnet */}
-                              <td className="py-3 px-3 font-mono text-[11px] text-m3-on-surface-variant">
-                                <span className="bg-m3-surface-container-highest px-2 py-0.5 rounded-full border border-m3-outline-variant/30">
-                                  {q.target}
+                              {/* Parent */}
+                              <td className="py-3 px-3 font-mono text-[11px]">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${
+                                    q.parent === 'global' || q.parent === 'none' || !q.parent
+                                      ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300 border-purple-500/20'
+                                      : 'bg-m3-surface-container-highest text-m3-on-surface-variant border-m3-outline-variant/30'
+                                  }`}
+                                >
+                                  {q.parent || 'global'}
                                 </span>
                               </td>
 
-                              {/* Limit */}
-                              <td className="py-3 px-3 font-mono font-bold text-amber-600 dark:text-amber-300">
-                                <span className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                                  {q.max_limit}
-                                </span>
+                              {/* Packet Mark */}
+                              <td className="py-3 px-3 font-mono text-[11px]">
+                                {q.packet_mark && q.packet_mark !== 'no-mark' ? (
+                                  <span className="inline-flex items-center gap-1 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 px-2 py-0.5 rounded-md border border-cyan-500/20 text-[10px] font-bold">
+                                    <Tag className="w-2.5 h-2.5" />
+                                    {q.packet_mark}
+                                  </span>
+                                ) : (
+                                  <span className="text-m3-on-surface-variant/50 text-[10px] italic">no-mark</span>
+                                )}
                               </td>
 
-                              {/* Tx */}
-                              <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">
-                                <div className="flex items-center gap-1">
-                                  <ArrowUpRight className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                                  <span>{formatThroughput(currentUl, queueUnitMode)}</span>
+                              {/* Limit Max / CIR */}
+                              <td className="py-3 px-3 font-mono text-[11px]">
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-amber-600 dark:text-amber-300">
+                                    Max: {q.max_limit}
+                                  </span>
+                                  {q.limit_at && (
+                                    <span className="text-[9px] text-m3-on-surface-variant">
+                                      CIR: {q.limit_at}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
-                              {/* Rx */}
-                              <td className="py-3 px-4 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                <div className="flex items-center gap-1">
-                                  <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                  <span>{formatThroughput(currentDl, queueUnitMode)}</span>
+                              {/* Tx / Rx */}
+                              <td className="py-3 px-4 font-mono font-bold">
+                                <div className="space-y-0.5 text-xs">
+                                  {currentUl > 0 && (
+                                    <div className="flex items-center gap-1 text-sky-600 dark:text-sky-400">
+                                      <ArrowUpRight className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                      <span>{formatThroughput(currentUl, queueUnitMode)}</span>
+                                    </div>
+                                  )}
+                                  {currentDl > 0 && (
+                                    <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                      <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span>{formatThroughput(currentDl, queueUnitMode)}</span>
+                                    </div>
+                                  )}
+                                  {currentDl === 0 && currentUl === 0 && (
+                                    <span className="text-m3-on-surface-variant/60 text-xs">0 bps</span>
+                                  )}
                                 </div>
                               </td>
 
                               {/* Waveform Sparkline */}
-                              <td className="py-3 px-4 w-52">
-                                <div className="w-48">
+                              <td className="py-3 px-4 w-48">
+                                <div className="w-44">
                                   <QueueTrafficSparkline
                                     queueId={q.id}
                                     downloadRate={currentDl}
@@ -512,7 +586,7 @@ export default function DeviceDetailPage() {
                               </td>
 
                               {/* Usage */}
-                              <td className="py-3 px-4 min-w-[120px]">
+                              <td className="py-3 px-4 min-w-[110px]">
                                 <div className="space-y-1">
                                   <div className="flex items-center justify-between text-[11px] font-mono font-bold">
                                     <span className={usagePercent > 80 ? 'text-rose-500' : 'text-m3-on-surface'}>
@@ -549,7 +623,7 @@ export default function DeviceDetailPage() {
                                   type="button"
                                   onClick={() => handleOpenEditQueue(q)}
                                   className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
-                                  title="Edit Limit Queue"
+                                  title="Edit Queue Tree"
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
@@ -564,11 +638,12 @@ export default function DeviceDetailPage() {
 
                 {/* Mobile Cards (< md) */}
                 <div className="space-y-3 block md:hidden">
-                  {filtered.map((q, idx) => {
-                    const maxNum = parseInt(q.max_limit.split('/')[1] || q.max_limit.replace(/[^0-9]/g, '') || '100', 10) || 100;
+                  {filtered.map((q) => {
+                    const maxNum = parseInt(String(q.max_limit).replace(/[^0-9]/g, ''), 10) || 40;
                     const currentDl = q.current_rate.download;
                     const currentUl = q.current_rate.upload;
-                    const usagePercent = Math.min(100, Math.round((currentDl / maxNum) * 100));
+                    const activeRate = currentDl > 0 ? currentDl : currentUl;
+                    const usagePercent = Math.min(100, Math.round((activeRate / maxNum) * 100));
 
                     let barColor = 'bg-emerald-500';
                     let badgeColor = 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
@@ -586,11 +661,16 @@ export default function DeviceDetailPage() {
                         className="p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30 space-y-3"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-1.5">
-                          <div className="font-bold text-sm text-m3-on-surface flex items-center gap-2">
+                          <div className="font-bold text-sm text-m3-on-surface flex items-center gap-1.5">
+                            {q.parent && q.parent !== 'global' ? (
+                              <CornerDownRight className="w-3.5 h-3.5 text-m3-on-surface-variant shrink-0" />
+                            ) : null}
                             <span>{q.name}</span>
-                            <span className="font-mono text-[10px] text-m3-on-surface-variant bg-m3-surface-container-highest px-2 py-0.5 rounded-full">
-                              {q.target}
-                            </span>
+                            {q.packet_mark && (
+                              <span className="font-mono text-[10px] text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                                {q.packet_mark}
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-1.5">
@@ -601,7 +681,7 @@ export default function DeviceDetailPage() {
                               type="button"
                               onClick={() => handleOpenEditQueue(q)}
                               className="p-1 rounded-md text-m3-on-surface-variant hover:text-amber-500 hover:bg-m3-surface-container-highest transition-colors"
-                              title="Edit Queue"
+                              title="Edit Queue Tree"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
@@ -630,8 +710,8 @@ export default function DeviceDetailPage() {
                           />
                         </div>
 
-                        <div className="flex items-center justify-between text-xs text-m3-on-surface-variant font-mono">
-                          <span>Limit: {q.max_limit}</span>
+                        <div className="flex flex-wrap items-center justify-between text-xs text-m3-on-surface-variant font-mono gap-1">
+                          <span>Parent: {q.parent || 'global'} | Max: {q.max_limit}</span>
                           {q.dropped > 0 ? (
                             <span className="text-rose-500 font-bold">{q.dropped} packet drops</span>
                           ) : (
@@ -646,41 +726,81 @@ export default function DeviceDetailPage() {
             );
           })()}
 
-          {/* Edit Queue Dialog Modal */}
+          {/* Edit Queue Dialog Modal (Queue Tree) */}
           {editingQueue && (
             <M3Dialog
               isOpen={!!editingQueue}
               onClose={() => setEditingQueue(null)}
-              title={`Edit Simple Queue: ${editingQueue.name}`}
+              title={`Edit Queue Tree: ${editingQueue.name}`}
             >
               <form onSubmit={handleSaveEditQueue} className="space-y-4 pt-2">
                 <M3TextField
-                  label="Nama Simple Queue"
+                  label="Nama Antrean (Queue Tree)"
                   value={editQueueName}
                   onChange={(e) => setEditQueueName(e.target.value)}
                   required
                 />
 
-                <M3TextField
-                  label="Target Subnet / Interface"
-                  value={editQueueTarget}
-                  onChange={(e) => setEditQueueTarget(e.target.value)}
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-m3-on-surface-variant mb-1 font-mono">
+                      Induk (Parent Queue)
+                    </label>
+                    <input
+                      type="text"
+                      value={editQueueParent}
+                      onChange={(e) => setEditQueueParent(e.target.value)}
+                      placeholder="e.g. Total-Download, global"
+                      className="w-full px-3 py-2 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/40 text-xs font-mono text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {['global', 'Total-Download', 'Total-Upload'].map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setEditQueueParent(p)}
+                          className={`text-[9px] font-mono px-1.5 py-0.5 rounded-sm border ${
+                            editQueueParent === p
+                              ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 border-purple-500/40 font-bold'
+                              : 'bg-m3-surface-container text-m3-on-surface-variant border-m3-outline-variant/30'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
+                  <div>
+                    <label className="block text-xs font-bold text-m3-on-surface-variant mb-1 font-mono">
+                      Packet Mark (Mangle)
+                    </label>
+                    <input
+                      type="text"
+                      value={editQueuePacketMark}
+                      onChange={(e) => setEditQueuePacketMark(e.target.value)}
+                      placeholder="e.g. dev-in_pkt, kantor-in_pkt"
+                      className="w-full px-3 py-2 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/40 text-xs font-mono text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
+                    />
+                  </div>
+                </div>
+
+                {/* Max Limit (MIR) */}
                 <div className="space-y-1.5">
                   <M3TextField
-                    label="Max Limit (Upload/Download)"
+                    label="Max Limit / MIR (Maksimal Bandwidth)"
                     value={editQueueMaxLimit}
                     onChange={(e) => setEditQueueMaxLimit(e.target.value)}
+                    required
                   />
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Pilihan Cepat:</span>
+                    <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Preset Max:</span>
                     {limitPresets.map((preset) => (
                       <button
                         key={preset}
                         type="button"
                         onClick={() => setEditQueueMaxLimit(preset)}
-                        className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition-colors ${
                           editQueueMaxLimit === preset
                             ? 'bg-amber-500 text-slate-950 font-black'
                             : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface'
@@ -692,11 +812,76 @@ export default function DeviceDetailPage() {
                   </div>
                 </div>
 
+                {/* Limit-At (CIR) */}
+                <div className="space-y-1.5">
+                  <M3TextField
+                    label="Limit At / CIR (Garansi Bandwidth Minimum)"
+                    value={editQueueLimitAt}
+                    onChange={(e) => setEditQueueLimitAt(e.target.value)}
+                    placeholder="e.g. 10M, 5M, 0"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-m3-on-surface-variant font-mono mr-1">Preset CIR:</span>
+                    {['30M', '20M', '10M', '5M', '2M', '0'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setEditQueueLimitAt(preset)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                          editQueueLimitAt === preset
+                            ? 'bg-cyan-500 text-slate-950 font-black'
+                            : 'bg-m3-surface-container-high hover:bg-m3-surface-container-highest text-m3-on-surface'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Priority & Queue Type */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-m3-on-surface-variant mb-1 font-mono">
+                      Prioritas (1 = Tertinggi, 8 = Normal)
+                    </label>
+                    <select
+                      value={editQueuePriority}
+                      onChange={(e) => setEditQueuePriority(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/40 text-xs font-mono text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((p) => (
+                        <option key={p} value={p}>
+                          Prioritas {p} {p === 1 ? '(Tertinggi / VIP)' : p === 8 ? '(Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-m3-on-surface-variant mb-1 font-mono">
+                      Queue Type
+                    </label>
+                    <select
+                      value={editQueueType}
+                      onChange={(e) => setEditQueueType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/40 text-xs font-mono text-m3-on-surface focus:outline-hidden focus:border-m3-primary"
+                    >
+                      <option value="pcq-download-default">pcq-download-default</option>
+                      <option value="pcq-upload-default">pcq-upload-default</option>
+                      <option value="default">default</option>
+                      <option value="default-small">default-small</option>
+                      <option value="fq_codel">fq_codel</option>
+                      <option value="ethernet-default">ethernet-default</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between pt-3 border-t border-m3-outline-variant/30">
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(`Hapus antrean ${editingQueue.name}?`)) {
+                      if (confirm(`Hapus antrean Queue Tree ${editingQueue.name}?`)) {
                         deleteQueue(editingQueue.id);
                         setEditingQueue(null);
                       }
