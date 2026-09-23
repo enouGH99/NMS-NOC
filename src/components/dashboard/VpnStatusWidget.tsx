@@ -3,11 +3,21 @@
 import React from 'react';
 import { useNms } from '@/lib/store';
 import { M3Card } from '../m3/M3Card';
-import { ShieldCheck, ShieldAlert, ArrowDown, ArrowUp, RefreshCw } from 'lucide-react';
-import { formatBytes } from '@/lib/utils';
+import {
+  ShieldCheck,
+  ShieldAlert,
+  ArrowDown,
+  ArrowUp,
+  RefreshCw,
+  Globe,
+  User,
+  Clock,
+  Radio,
+} from 'lucide-react';
+import { formatBits } from '@/lib/utils';
 
 export const VpnStatusWidget: React.FC = () => {
-  const { vpnTunnels, syncVpnTunnels } = useNms();
+  const { vpnTunnels, syncVpnTunnels, isGlobalRefreshing } = useNms();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   const connectedCount = vpnTunnels.filter((v) => v.status === 'connected').length;
@@ -15,7 +25,7 @@ export const VpnStatusWidget: React.FC = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await syncVpnTunnels();
+      await syncVpnTunnels(undefined, true);
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
     }
@@ -33,51 +43,56 @@ export const VpnStatusWidget: React.FC = () => {
         return { label: 'WireGuard', bg: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' };
       case 'sstp':
         return { label: 'SSTP', bg: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30' };
+      case 'ipsec':
+        return { label: 'IPsec', bg: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30' };
       default:
         return { label: type.toUpperCase(), bg: 'bg-m3-surface-container-highest text-m3-on-surface-variant border-m3-outline-variant/30' };
     }
   };
 
   return (
-    <M3Card className="p-5 flex flex-col h-full border border-m3-outline-variant/30">
-      <div className="flex items-center justify-between pb-3 border-b border-m3-outline-variant/30">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-m3-md bg-m3-primary/15 text-m3-primary">
+    <M3Card className="p-4 sm:p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-m3-outline-variant/30 gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-2 rounded-m3-md bg-m3-primary/15 text-m3-primary shrink-0">
             <ShieldCheck className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-m3-on-surface">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm sm:text-base font-bold text-m3-on-surface truncate">
                 Status Tunnel & Sesi VPN
               </h3>
               {vpnTunnels.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
                   {connectedCount} Terkoneksi
                 </span>
               )}
             </div>
-            <p className="text-xs text-m3-on-surface-variant">
-              Koneksi Site-to-Site & Remote Petugas Lapangan
+            <p className="text-[11px] sm:text-xs text-m3-on-surface-variant truncate">
+              Koneksi Site-to-Site & Remote Sesi Lapangan
             </p>
           </div>
         </div>
+
         <button
           onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-m3-primary hover:bg-m3-surface-container transition-colors"
+          disabled={isRefreshing || isGlobalRefreshing}
+          className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-m3-primary hover:bg-m3-surface-container transition-colors shrink-0"
           title="Segarkan Sesi VPN"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-m3-primary' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${isRefreshing || isGlobalRefreshing ? 'animate-spin text-m3-primary' : ''}`} />
         </button>
       </div>
 
-      <div className="pt-4 space-y-3 flex-1 overflow-y-auto max-h-[340px]">
+      {/* Tunnel List */}
+      <div className="pt-3 space-y-2.5 flex-1 overflow-y-auto max-h-[360px] pr-0.5">
         {vpnTunnels.length === 0 ? (
           <div className="text-center py-8 text-m3-on-surface-variant">
             <ShieldCheck className="w-8 h-8 text-m3-primary/40 mx-auto mb-2" />
-            <p className="text-xs font-semibold">Tidak ada tunnel VPN aktif</p>
-            <p className="text-[11px] text-m3-on-surface-variant/70 mt-1">
-              Sinkronisasi SNMP perangkat untuk mendeteksi tunnel & sesi PPP
+            <p className="text-xs font-semibold text-m3-on-surface">Tidak ada tunnel VPN aktif</p>
+            <p className="text-[11px] text-m3-on-surface-variant/70 mt-1 max-w-xs mx-auto">
+              Sinkronisasi SNMP perangkat untuk mendeteksi tunnel & sesi PPP MikroTik
             </p>
           </div>
         ) : (
@@ -87,59 +102,86 @@ export const VpnStatusWidget: React.FC = () => {
             return (
               <div
                 key={vpn.id}
-                className="p-3 rounded-m3-xl bg-m3-surface-container border border-m3-outline-variant/30 flex items-center justify-between gap-3 hover:border-m3-primary/30 transition-all"
+                className="p-3 rounded-m3-xl bg-m3-surface-container border border-m3-outline-variant/30 hover:border-m3-primary/30 transition-all space-y-2 shadow-2xs"
               >
-                <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                  <div
-                    className={`p-2 rounded-full shrink-0 relative ${
-                      isConnected
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {isConnected ? (
-                      <>
-                        <ShieldCheck className="w-4 h-4" />
-                        <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                      </>
-                    ) : (
-                      <ShieldAlert className="w-4 h-4" />
-                    )}
-                  </div>
-                  <div className="truncate min-w-0">
-                    <div className="text-xs font-bold text-m3-on-surface truncate flex items-center gap-1.5">
-                      <span className="truncate">{vpn.name}</span>
-                      <span className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ${badge.bg}`}>
-                        {badge.label}
+                {/* Row 1: Status Icon, Tunnel Name, Type Badge, and Connection State */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={`p-1.5 rounded-full shrink-0 relative ${
+                        isConnected
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {isConnected ? (
+                        <>
+                          <ShieldCheck className="w-4 h-4" />
+                          <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        </>
+                      ) : (
+                        <ShieldAlert className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-m3-on-surface truncate block" title={vpn.name}>
+                        {vpn.name}
                       </span>
                     </div>
-                    <div className="text-[11px] text-m3-on-surface-variant flex items-center gap-1.5 mt-0.5 truncate">
-                      <span className="font-mono text-[10px]">{vpn.remote_ip}</span>
-                      <span>•</span>
-                      <span className="font-medium truncate">User: {vpn.user}</span>
-                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded-md border font-bold ${badge.bg}`}>
+                      {badge.label}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isConnected
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                      }`}
+                    >
+                      {isConnected ? 'Connected' : 'Disconnected'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="text-right shrink-0">
-                  <div
-                    className={`text-[11px] font-bold ${
-                      isConnected
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {isConnected ? 'Connected' : 'Disconnected'}
-                  </div>
-                  {isConnected && (
-                    <div className="text-[10px] font-mono text-m3-on-surface-variant flex items-center gap-1.5 mt-0.5 justify-end">
-                      <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-semibold" title="Data Masuk">
-                        <ArrowDown className="w-2.5 h-2.5 mr-0.5" />
-                        {formatBytes(vpn.bytes_in)}
+                {/* Row 2: User, IP, Uptime, and Bit/sec Throughput */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-m3-outline-variant/20 text-[11px]">
+                  {/* IP, User & Uptime */}
+                  <div className="flex flex-wrap items-center gap-2 text-m3-on-surface-variant font-mono">
+                    <span className="inline-flex items-center gap-1 bg-m3-surface-container-high px-1.5 py-0.5 rounded text-[10px]">
+                      <Globe className="w-3 h-3 text-m3-primary/70" />
+                      {vpn.remote_ip || '0.0.0.0'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-sans font-medium text-[11px] text-m3-on-surface">
+                      <User className="w-3 h-3 text-m3-on-surface-variant/70" />
+                      {vpn.user || 'Unknown'}
+                    </span>
+                    {vpn.uptime && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-m3-on-surface-variant">
+                        <Clock className="w-2.5 h-2.5" />
+                        {vpn.uptime}
                       </span>
-                      <span className="flex items-center text-sky-600 dark:text-sky-400 font-semibold" title="Data Keluar">
-                        <ArrowUp className="w-2.5 h-2.5 mr-0.5" />
-                        {formatBytes(vpn.bytes_out)}
+                    )}
+                  </div>
+
+                  {/* Rx / Tx Bitrate (Standard bit/sec) */}
+                  {isConnected && (
+                    <div className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
+                      <span
+                        className="inline-flex items-center text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                        title="Trafik Masuk (Rx)"
+                      >
+                        <ArrowDown className="w-3 h-3 mr-0.5" />
+                        {formatBits(vpn.bytes_in)}
+                      </span>
+                      <span
+                        className="inline-flex items-center text-sky-600 dark:text-sky-400 font-bold bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20"
+                        title="Trafik Keluar (Tx)"
+                      >
+                        <ArrowUp className="w-3 h-3 mr-0.5" />
+                        {formatBits(vpn.bytes_out)}
                       </span>
                     </div>
                   )}
@@ -152,4 +194,3 @@ export const VpnStatusWidget: React.FC = () => {
     </M3Card>
   );
 };
-

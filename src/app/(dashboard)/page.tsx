@@ -20,18 +20,46 @@ import {
   Activity,
   Map,
   SlidersHorizontal,
+  RefreshCw,
+  Clock,
+  Radio,
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { liveStats, dashboardWidgets, toggleDashboardWidget } = useNms();
+  const {
+    liveStats,
+    dashboardWidgets,
+    toggleDashboardWidget,
+    autoRefreshInterval,
+    setAutoRefreshInterval,
+    isGlobalRefreshing,
+    lastRefreshedAt,
+    refreshAllData,
+  } = useNms();
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
+  const refreshIntervalOptions = [
+    { label: '5 Detik', value: '5s' as const },
+    { label: '10 Detik', value: '10s' as const },
+    { label: '15 Detik', value: '15s' as const },
+    { label: '30 Detik', value: '30s' as const },
+    { label: 'Mati', value: 'off' as const },
+  ];
+
+  const formatLastRefreshed = (date: Date | null) => {
+    if (!date) return '-';
+    return `${date.getHours().toString().padStart(2, '0')}:${date
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Top Banner / Greeting & Quick Navigation Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-m3-surface-container-low p-6 rounded-m3-3xl border border-m3-outline-variant/30">
+    <div className="space-y-5 animate-in fade-in duration-300">
+      {/* Top Banner / Greeting & Actions */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-m3-surface-container-low p-5 sm:p-6 rounded-m3-3xl border border-m3-outline-variant/30">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl md:text-2xl font-black text-m3-on-surface tracking-tight">
               Pusat Operasi Jaringan (NOC Dashboard)
             </h1>
@@ -64,6 +92,67 @@ export default function DashboardPage() {
               Peta Topologi
             </M3Button>
           </Link>
+        </div>
+      </div>
+
+      {/* Global Auto-Refresh & Live Sync Control Toolbar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 sm:px-5 sm:py-3 rounded-m3-2xl bg-m3-surface-container border border-m3-outline-variant/30 shadow-2xs">
+        {/* Interval Selector Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-m3-on-surface mr-1">
+            <Clock className="w-3.5 h-3.5 text-m3-primary" />
+            <span>Pembaruan Otomatis:</span>
+          </div>
+
+          <div className="inline-flex flex-wrap items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
+            {refreshIntervalOptions.map((opt) => {
+              const isActive = autoRefreshInterval === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setAutoRefreshInterval(opt.value)}
+                  className={`px-2.5 py-1 rounded-m3-lg text-[11px] font-bold font-mono transition-all ${
+                    isActive
+                      ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
+                      : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Sync Status Indicator & Manual Refresh Button */}
+        <div className="flex items-center gap-3 justify-between md:justify-end">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono text-m3-on-surface-variant">
+            {autoRefreshInterval !== 'off' ? (
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live ({autoRefreshInterval})
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-m3-on-surface-variant">
+                <span className="w-2 h-2 rounded-full bg-m3-outline" />
+                Manual
+              </span>
+            )}
+            <span className="text-m3-outline">•</span>
+            <span>Update: {formatLastRefreshed(lastRefreshedAt)}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => refreshAllData(true)}
+            disabled={isGlobalRefreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-m3-xl bg-m3-primary/15 hover:bg-m3-primary/25 text-m3-primary text-xs font-bold transition-all disabled:opacity-50"
+            title="Segarkan semua data tabel & grafik sekarang"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isGlobalRefreshing ? 'animate-spin' : ''}`} />
+            <span>Segarkan Semua</span>
+          </button>
         </div>
       </div>
 

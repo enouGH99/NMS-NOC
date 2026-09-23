@@ -7,7 +7,7 @@ import { M3Card } from '../m3/M3Card';
 import { M3Button } from '../m3/M3Button';
 import { M3Dialog } from '../m3/M3Dialog';
 import { M3TextField } from '../m3/M3TextField';
-import { formatBytes, formatThroughput } from '@/lib/utils';
+import { formatBitsTotal, formatThroughput } from '@/lib/utils';
 import {
   Layers,
   Zap,
@@ -477,9 +477,9 @@ export const InterfaceTable: React.FC<InterfaceTableProps> = ({
                   </div>
                 </div>
 
-                {/* Total Bytes */}
+                {/* Total Bits */}
                 <div className="flex items-center justify-between text-[11px] text-m3-on-surface-variant font-mono pt-1">
-                  <span>Total: ↓ {formatBytes(iface.rx_bytes)} / ↑ {formatBytes(iface.tx_bytes)}</span>
+                  <span>Total: ↓ {formatBitsTotal(iface.rx_bytes)} / ↑ {formatBitsTotal(iface.tx_bytes)}</span>
                   <span>Error: {iface.error_rate}</span>
                 </div>
               </div>
@@ -613,10 +613,10 @@ export const InterfaceTable: React.FC<InterfaceTableProps> = ({
                         )}
                       </td>
 
-                      {/* Total In/Out Bytes */}
+                      {/* Total In/Out Data */}
                       <td className="py-3 px-4 font-mono text-m3-on-surface-variant text-[11px]">
-                        <div>↓ {formatBytes(iface.rx_bytes)}</div>
-                        <div>↑ {formatBytes(iface.tx_bytes)}</div>
+                        <div>↓ {formatBitsTotal(iface.rx_bytes)}</div>
+                        <div>↑ {formatBitsTotal(iface.tx_bytes)}</div>
                       </td>
 
                       {/* Action Column */}

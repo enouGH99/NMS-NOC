@@ -57,6 +57,13 @@ interface NmsContextType {
   loginAs: (role: UserRole, email?: string) => void;
   logout: () => void;
 
+  // Auto-Refresh & Global Sync
+  autoRefreshInterval: 'off' | '5s' | '10s' | '15s' | '30s';
+  setAutoRefreshInterval: (interval: 'off' | '5s' | '10s' | '15s' | '30s') => void;
+  isGlobalRefreshing: boolean;
+  lastRefreshedAt: Date | null;
+  refreshAllData: (force?: boolean) => Promise<void>;
+
   // Data State
   locations: Location[];
   devices: Device[];
@@ -247,105 +254,150 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return points;
   });
 
+  // Auto-Refresh & Global Sync State
+  const [autoRefreshInterval, setAutoRefreshIntervalState] = useState<'off' | '5s' | '10s' | '15s' | '30s'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('nms_auto_refresh');
+        if (saved === '5s' || saved === '10s' || saved === '15s' || saved === '30s' || saved === 'off') {
+          return saved as any;
+        }
+      } catch {}
+    }
+    return '10s';
+  });
+  const [isGlobalRefreshing, setIsGlobalRefreshing] = useState<boolean>(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(new Date());
+
+  const setAutoRefreshInterval = useCallback((interval: 'off' | '5s' | '10s' | '15s' | '30s') => {
+    setAutoRefreshIntervalState(interval);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('nms_auto_refresh', interval);
+      } catch {}
+    }
+  }, []);
+
+  const refreshAllData = useCallback(async (force = false) => {
+    setIsGlobalRefreshing(true);
+    try {
+      const [
+        devicesRes,
+        locationsRes,
+        alertsRes,
+        repairsRes,
+        schedulesRes,
+        usersRes,
+        logsRes,
+        discoveryRes,
+        alertRulesRes,
+        queuesRes,
+        interfacesRes,
+        vpnRes,
+      ] = await Promise.allSettled([
+        nmsApi.getDevices(),
+        nmsApi.getLocations(),
+        nmsApi.getAlerts(),
+        nmsApi.getRepairs(),
+        nmsApi.getReports(),
+        nmsApi.getUsers(),
+        nmsApi.getAuditLogs(),
+        nmsApi.getDiscovery(),
+        nmsApi.getAlertRules(),
+        nmsApi.getQueues(undefined, force),
+        nmsApi.getInterfaces(undefined, force),
+        nmsApi.getVpnTunnels(undefined, force),
+      ]);
+
+      if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
+        setDevices(devicesRes.value);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('nms_devices', JSON.stringify(devicesRes.value)); } catch {}
+        }
+      }
+
+      if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value) && locationsRes.value.length > 0) {
+        setLocations(locationsRes.value);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('nms_locations', JSON.stringify(locationsRes.value)); } catch {}
+        }
+      } else if (locations.length === 0) {
+        setLocations(initialLocations);
+      }
+      if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value)) {
+        setAlerts(alertsRes.value);
+      }
+      if (repairsRes.status === 'fulfilled' && Array.isArray(repairsRes.value)) {
+        setRepairRecords(repairsRes.value);
+      }
+      if (schedulesRes.status === 'fulfilled' && schedulesRes.value) {
+        const sch = Array.isArray(schedulesRes.value) ? schedulesRes.value : schedulesRes.value.schedules;
+        if (Array.isArray(sch)) {
+          setReportSchedules(sch);
+        }
+      }
+      if (alertRulesRes.status === 'fulfilled' && Array.isArray(alertRulesRes.value) && alertRulesRes.value.length > 0) {
+        setAlertRules(alertRulesRes.value);
+      } else {
+        setAlertRules(initialAlertRules);
+      }
+      if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
+        setQueues(queuesRes.value);
+      }
+      if (interfacesRes.status === 'fulfilled' && Array.isArray(interfacesRes.value)) {
+        setInterfaces(interfacesRes.value);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('nms_interfaces', JSON.stringify(interfacesRes.value)); } catch {}
+        }
+      }
+      if (vpnRes.status === 'fulfilled' && Array.isArray(vpnRes.value)) {
+        setVpnTunnels(vpnRes.value);
+      }
+      if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
+        setUsers(usersRes.value);
+        const savedUser = typeof window !== 'undefined' ? localStorage.getItem('nms_auth_user') : null;
+        if (!savedUser) {
+          setCurrentUser(usersRes.value[0]);
+        }
+      }
+      if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
+        setAuditLogs(logsRes.value);
+      }
+      if (discoveryRes.status === 'fulfilled' && Array.isArray(discoveryRes.value)) {
+        setDiscoveredDevices(discoveryRes.value);
+      }
+      setLastRefreshedAt(new Date());
+    } catch (err) {
+      console.warn('API sync fallback to clean initial state:', err);
+    } finally {
+      setTimeout(() => setIsGlobalRefreshing(false), 300);
+    }
+  }, [locations.length]);
+
   // Initial backend API data synchronization with PostgreSQL
   useEffect(() => {
-    const syncWithBackend = async () => {
-      try {
-        const [
-          devicesRes,
-          locationsRes,
-          alertsRes,
-          repairsRes,
-          schedulesRes,
-          usersRes,
-          logsRes,
-          discoveryRes,
-          alertRulesRes,
-          queuesRes,
-          interfacesRes,
-          vpnRes,
-        ] = await Promise.allSettled([
-          nmsApi.getDevices(),
-          nmsApi.getLocations(),
-          nmsApi.getAlerts(),
-          nmsApi.getRepairs(),
-          nmsApi.getReports(),
-          nmsApi.getUsers(),
-          nmsApi.getAuditLogs(),
-          nmsApi.getDiscovery(),
-          nmsApi.getAlertRules(),
-          nmsApi.getQueues(),
-          nmsApi.getInterfaces(),
-          nmsApi.getVpnTunnels(),
-        ]);
+    refreshAllData(false);
+  }, [refreshAllData]);
 
-        let loadedDevices: Device[] = [];
-        if (devicesRes.status === 'fulfilled' && Array.isArray(devicesRes.value)) {
-          loadedDevices = devicesRes.value;
-          setDevices(devicesRes.value);
-          if (typeof window !== 'undefined') {
-            try { localStorage.setItem('nms_devices', JSON.stringify(devicesRes.value)); } catch {}
-          }
-        }
+  // Global Auto-Refresh Timer based on autoRefreshInterval (5s, 10s, 15s, 30s)
+  useEffect(() => {
+    if (autoRefreshInterval === 'off') return;
 
-        if (locationsRes.status === 'fulfilled' && Array.isArray(locationsRes.value) && locationsRes.value.length > 0) {
-          setLocations(locationsRes.value);
-          if (typeof window !== 'undefined') {
-            try { localStorage.setItem('nms_locations', JSON.stringify(locationsRes.value)); } catch {}
-          }
-        } else if (locations.length === 0) {
-          setLocations(initialLocations);
-        }
-        if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value)) {
-          setAlerts(alertsRes.value);
-        }
-        if (repairsRes.status === 'fulfilled' && Array.isArray(repairsRes.value)) {
-          setRepairRecords(repairsRes.value);
-        }
-        if (schedulesRes.status === 'fulfilled' && schedulesRes.value) {
-          const sch = Array.isArray(schedulesRes.value) ? schedulesRes.value : schedulesRes.value.schedules;
-          if (Array.isArray(sch)) {
-            setReportSchedules(sch);
-          }
-        }
-        if (alertRulesRes.status === 'fulfilled' && Array.isArray(alertRulesRes.value) && alertRulesRes.value.length > 0) {
-          setAlertRules(alertRulesRes.value);
-        } else {
-          setAlertRules(initialAlertRules);
-        }
-        if (queuesRes.status === 'fulfilled' && Array.isArray(queuesRes.value)) {
-          setQueues(queuesRes.value);
-        }
-        if (interfacesRes.status === 'fulfilled' && Array.isArray(interfacesRes.value)) {
-          setInterfaces(interfacesRes.value);
-          if (typeof window !== 'undefined') {
-            try { localStorage.setItem('nms_interfaces', JSON.stringify(interfacesRes.value)); } catch {}
-          }
-        }
-        if (vpnRes.status === 'fulfilled' && Array.isArray(vpnRes.value)) {
-          setVpnTunnels(vpnRes.value);
-        }
-        if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) && usersRes.value.length > 0) {
-          setUsers(usersRes.value);
-          // Only update currentUser if not already set from session
-          const savedUser = typeof window !== 'undefined' ? localStorage.getItem('nms_auth_user') : null;
-          if (!savedUser) {
-            setCurrentUser(usersRes.value[0]);
-          }
-        }
-        if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
-          setAuditLogs(logsRes.value);
-        }
-        if (discoveryRes.status === 'fulfilled' && Array.isArray(discoveryRes.value)) {
-          setDiscoveredDevices(discoveryRes.value);
-        }
-      } catch (err) {
-        console.warn('API sync fallback to clean initial state:', err);
-      }
+    const msMap: Record<string, number> = {
+      '5s': 5000,
+      '10s': 10000,
+      '15s': 15000,
+      '30s': 30000,
     };
 
-    syncWithBackend();
-  }, []);
+    const intervalMs = msMap[autoRefreshInterval] || 10000;
+
+    const timer = setInterval(() => {
+      refreshAllData(true);
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [autoRefreshInterval, refreshAllData]);
 
   // Apply dark mode class to HTML
   useEffect(() => {
@@ -1149,6 +1201,11 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     login,
     loginAs,
     logout,
+    autoRefreshInterval,
+    setAutoRefreshInterval,
+    isGlobalRefreshing,
+    lastRefreshedAt,
+    refreshAllData,
     locations,
     devices,
     interfaces,

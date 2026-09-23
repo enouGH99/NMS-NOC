@@ -15,6 +15,42 @@ export function formatBytes(bytes: number, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+/**
+ * Format bytes count to networking bit/sec throughput standards (bps, Kbps, Mbps, Gbps)
+ */
+export function formatBits(bytes: number, decimals = 1): string {
+  if (!+bytes || bytes === 0) return '0 bps';
+  const bits = bytes * 8;
+  if (bits >= 1000 * 1000 * 1000) {
+    return `${(bits / (1000 * 1000 * 1000)).toFixed(decimals)} Gbps`;
+  }
+  if (bits >= 1000 * 1000) {
+    return `${(bits / (1000 * 1000)).toFixed(decimals)} Mbps`;
+  }
+  if (bits >= 1000) {
+    return `${(bits / 1000).toFixed(decimals)} Kbps`;
+  }
+  return `${Math.round(bits)} bps`;
+}
+
+/**
+ * Format bytes to total bits (bit, Kb, Mb, Gb)
+ */
+export function formatBitsTotal(bytes: number, decimals = 1): string {
+  if (!+bytes || bytes === 0) return '0 bit';
+  const bits = bytes * 8;
+  if (bits >= 1000 * 1000 * 1000) {
+    return `${(bits / (1000 * 1000 * 1000)).toFixed(decimals)} Gb`;
+  }
+  if (bits >= 1000 * 1000) {
+    return `${(bits / (1000 * 1000)).toFixed(decimals)} Mb`;
+  }
+  if (bits >= 1000) {
+    return `${(bits / 1000).toFixed(decimals)} Kb`;
+  }
+  return `${Math.round(bits)} bit`;
+}
+
 export function formatMbps(mbps: number, decimals = 1) {
   if (mbps >= 1000) {
     return `${(mbps / 1000).toFixed(decimals)} Gbps`;
