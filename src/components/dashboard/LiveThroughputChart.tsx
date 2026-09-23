@@ -25,71 +25,93 @@ import {
   Layers,
   Globe,
   Network,
+  Gauge,
 } from 'lucide-react';
 import { formatThroughput } from '@/lib/utils';
 import { M3Button } from '../m3/M3Button';
 
-type TimeInterval = '5m' | '10m' | '15m' | '30m';
+type TimeRange = '5m' | '10m' | '15m' | '30m';
+type TickIntervalMode = 'auto' | '1m' | '2m' | '5m' | '10m' | '15m';
 type StreamFilter = 'all' | 'wan' | 'lan';
 
-interface IntervalSetting {
+interface RangeConfig {
   label: string;
-  value: TimeInterval;
+  value: TimeRange;
   durationSec: number;
-  stepSec: number;
-  tickIntervalSec: number; // Jarak antar tick jam (misal 60s = 1 mnt, 300s = 5 mnt seperti Grafana)
-  timeFormat: 'seconds' | 'minutes';
+  samplingStepSec: number;
+  autoTickSec: number;
+  allowedTicks: { label: string; value: TickIntervalMode; sec: number }[];
   desc: string;
 }
 
-const INTERVAL_SETTINGS: Record<TimeInterval, IntervalSetting> = {
+const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   '5m': {
     label: '5 Menit',
     value: '5m',
-    durationSec: 300, // 5 menit
-    stepSec: 5, // resolusi sampling per 5 detik
-    tickIntervalSec: 60, // Tick sumbu X per 1 Menit (HH:mm:00 seperti Grafana)
-    timeFormat: 'seconds',
-    desc: 'Rentang 5 Menit Terakhir (Tick per 1 Menit)',
+    durationSec: 300,
+    samplingStepSec: 5,
+    autoTickSec: 60, // Default 1 menit
+    allowedTicks: [
+      { label: 'Auto (1m)', value: 'auto', sec: 60 },
+      { label: '1 Menit', value: '1m', sec: 60 },
+      { label: '5 Menit', value: '5m', sec: 300 },
+    ],
+    desc: 'Rentang 5 Menit Terakhir',
   },
   '10m': {
     label: '10 Menit',
     value: '10m',
-    durationSec: 600, // 10 menit
-    stepSec: 10, // resolusi sampling per 10 detik
-    tickIntervalSec: 120, // Tick sumbu X per 2 Menit (HH:mm)
-    timeFormat: 'minutes',
-    desc: 'Rentang 10 Menit Terakhir (Tick per 2 Menit)',
+    durationSec: 600,
+    samplingStepSec: 10,
+    autoTickSec: 120, // Default 2 menit
+    allowedTicks: [
+      { label: 'Auto (2m)', value: 'auto', sec: 120 },
+      { label: '1 Menit', value: '1m', sec: 60 },
+      { label: '2 Menit', value: '2m', sec: 120 },
+      { label: '5 Menit', value: '5m', sec: 300 },
+    ],
+    desc: 'Rentang 10 Menit Terakhir',
   },
   '15m': {
     label: '15 Menit',
     value: '15m',
-    durationSec: 900, // 15 menit
-    stepSec: 15, // resolusi sampling per 15 detik
-    tickIntervalSec: 300, // Tick sumbu X per 5 Menit (HH:mm seperti Grafana: 16:25, 16:30, 16:35)
-    timeFormat: 'minutes',
-    desc: 'Rentang 15 Menit Terakhir (Tick per 5 Menit)',
+    durationSec: 900,
+    samplingStepSec: 15,
+    autoTickSec: 300, // Default 5 menit (16:25, 16:30, 16:35 seperti Grafana)
+    allowedTicks: [
+      { label: 'Auto (5m)', value: 'auto', sec: 300 },
+      { label: '2 Menit', value: '2m', sec: 120 },
+      { label: '5 Menit', value: '5m', sec: 300 },
+      { label: '15 Menit', value: '15m', sec: 900 },
+    ],
+    desc: 'Rentang 15 Menit Terakhir',
   },
   '30m': {
     label: '30 Menit',
     value: '30m',
-    durationSec: 1800, // 30 menit
-    stepSec: 30, // resolusi sampling per 30 detik
-    tickIntervalSec: 300, // Tick sumbu X per 5 Menit (HH:mm)
-    timeFormat: 'minutes',
-    desc: 'Rentang 30 Menit Terakhir (Tick per 5 Menit)',
+    durationSec: 1800,
+    samplingStepSec: 30,
+    autoTickSec: 300, // Default 5 menit
+    allowedTicks: [
+      { label: 'Auto (5m)', value: 'auto', sec: 300 },
+      { label: '5 Menit', value: '5m', sec: 300 },
+      { label: '10 Menit', value: '10m', sec: 600 },
+      { label: '15 Menit', value: '15m', sec: 900 },
+    ],
+    desc: 'Rentang 30 Menit Terakhir',
   },
 };
 
 export const LiveThroughputChart: React.FC = () => {
   const { liveStats, devices } = useNms();
-  const [selectedInterval, setSelectedInterval] = useState<TimeInterval>('5m');
+  const [selectedRange, setSelectedRange] = useState<TimeRange>('5m');
+  const [selectedTickMode, setSelectedTickMode] = useState<TickIntervalMode>('auto');
   const [selectedStream, setSelectedStream] = useState<StreamFilter>('all');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
 
   const isStandby = devices.length === 0;
 
-  // Realtime clock ticker - updates every 2 seconds
+  // Realtime clock ticker every 2 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setNowTimestamp(Date.now());
@@ -97,20 +119,35 @@ export const LiveThroughputChart: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Multiplier for stream filtering
+  const activeRange = RANGE_CONFIGS[selectedRange] || RANGE_CONFIGS['5m'];
+
+  // Calculate actual effective tick interval in seconds
+  const effectiveTickSec = useMemo(() => {
+    if (selectedTickMode === 'auto') return activeRange.autoTickSec;
+    const match = activeRange.allowedTicks.find((t) => t.value === selectedTickMode);
+    return match ? match.sec : activeRange.autoTickSec;
+  }, [selectedTickMode, activeRange]);
+
+  // Stream Multiplier
   const streamMultiplier = useMemo(() => {
     if (selectedStream === 'wan') return { in: 0.85, out: 0.35, label: 'Jalur WAN ISP (ether1)' };
     if (selectedStream === 'lan') return { in: 0.75, out: 0.80, label: 'Distribusi Bridge LAN' };
     return { in: 1.0, out: 1.0, label: 'Semua Trafik (Agregat)' };
   }, [selectedStream]);
 
-  const activeSetting = INTERVAL_SETTINGS[selectedInterval] || INTERVAL_SETTINGS['5m'];
+  // Reset tickMode to 'auto' when user switches range if previous mode is not allowed in new range
+  useEffect(() => {
+    const isAllowed = activeRange.allowedTicks.some((t) => t.value === selectedTickMode);
+    if (!isAllowed) {
+      setSelectedTickMode('auto');
+    }
+  }, [selectedRange, activeRange, selectedTickMode]);
 
-  // Generate Grafana-style numeric time-series and perfectly aligned round milestone ticks
+  // Generate Grafana-style time series & round ticks
   const { chartData, xTicks, xDomain } = useMemo(() => {
     if (isStandby) return { chartData: [], xTicks: [], xDomain: [0, 1] };
 
-    const { durationSec, stepSec, tickIntervalSec } = activeSetting;
+    const { durationSec, samplingStepSec } = activeRange;
     const endMs = nowTimestamp;
     const startMs = endMs - durationSec * 1000;
 
@@ -118,13 +155,12 @@ export const LiveThroughputChart: React.FC = () => {
     const baseOut = (liveStats.currentOutboundMbps || 12) * streamMultiplier.out;
 
     const points = [];
-    const totalSteps = Math.floor(durationSec / stepSec);
+    const totalSteps = Math.floor(durationSec / samplingStepSec);
 
-    // 1. Generate smooth continuous data points
+    // 1. Generate smooth continuous curve points
     for (let i = 0; i <= totalSteps; i++) {
-      const ts = startMs + i * stepSec * 1000;
+      const ts = startMs + i * samplingStepSec * 1000;
 
-      // Natural harmonic waveform with jitter
       const wave = Math.sin(ts / 15000) * (baseIn * 0.18);
       const noiseIn = Math.cos(ts / 8000) * (baseIn * 0.08);
       const noiseOut = Math.sin(ts / 9000) * (baseOut * 0.12);
@@ -139,27 +175,18 @@ export const LiveThroughputChart: React.FC = () => {
       });
     }
 
-    // 2. Generate clean, round milestone ticks aligned to natural clock intervals (like Grafana)
-    // E.g. For 15m (tickIntervalSec = 300 / 5 min): find round 5-minute timestamps like 16:25, 16:30, 16:35
-    const tickIntervalMs = tickIntervalSec * 1000;
-    const firstRoundTick = Math.ceil(startMs / tickIntervalMs) * tickIntervalMs;
+    // 2. Generate clean round milestone ticks matching the chosen tick interval (Grafana standard)
+    const tickMs = effectiveTickSec * 1000;
+    const firstRoundTick = Math.ceil(startMs / tickMs) * tickMs;
     const ticks: number[] = [];
 
-    for (let t = firstRoundTick; t <= endMs; t += tickIntervalMs) {
-      // Keep ticks within visible bounds with small margin
-      if (t >= startMs + 10000 && t <= endMs - 5000) {
-        ticks.push(t);
-      } else if (t >= startMs && t <= endMs) {
-        ticks.push(t);
-      }
+    for (let t = firstRoundTick; t <= endMs; t += tickMs) {
+      ticks.push(t);
     }
 
-    // If ticks array has too few entries (edge case), ensure start and round intervals are populated
-    if (ticks.length < 2) {
-      ticks.length = 0;
-      for (let t = firstRoundTick; t <= endMs; t += tickIntervalMs) {
-        ticks.push(t);
-      }
+    // If ticks list is empty or single, guarantee boundary ticks
+    if (ticks.length === 0) {
+      ticks.push(startMs, endMs);
     }
 
     return {
@@ -167,7 +194,7 @@ export const LiveThroughputChart: React.FC = () => {
       xTicks: ticks,
       xDomain: [startMs, endMs],
     };
-  }, [selectedInterval, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeSetting]);
+  }, [selectedRange, effectiveTickSec, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange]);
 
   // Format tick labels on X-axis (Grafana format)
   const formatXAxisTick = (unixMs: number) => {
@@ -176,11 +203,11 @@ export const LiveThroughputChart: React.FC = () => {
     const m = d.getMinutes().toString().padStart(2, '0');
     const s = d.getSeconds().toString().padStart(2, '0');
 
-    if (activeSetting.timeFormat === 'seconds') {
-      // 5 Menit: HH:mm:ss (e.g. 16:32:00, 16:33:00, 16:34:00)
+    // If tick step is in seconds or 5m range with seconds precision
+    if (effectiveTickSec < 60) {
       return `${h}:${m}:${s}`;
     }
-    // 10m, 15m, 30m: HH:mm (e.g. 16:25, 16:30, 16:35)
+    // Standard Grafana minute precision: 16:25, 16:30, 16:35
     return `${h}:${m}`;
   };
 
@@ -246,23 +273,23 @@ export const LiveThroughputChart: React.FC = () => {
         </div>
       </div>
 
-      {/* Toolbar: Time Interval Selector (5m, 10m, 15m, 30m) & Stream Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5">
-        {/* Interval Selector Buttons (Grafana Style) */}
+      {/* Toolbar: Time Range, Tick Interval Adjuster, & Stream Filter */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-0.5">
+        {/* Left: Rentang Waktu Buttons */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
-            <Clock className="w-3 h-3 text-m3-primary" />
+            <Clock className="w-3.5 h-3.5 text-m3-primary" />
             Rentang Waktu:
           </span>
           <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
-            {(['5m', '10m', '15m', '30m'] as TimeInterval[]).map((val) => {
-              const cfg = INTERVAL_SETTINGS[val];
-              const isActive = selectedInterval === val;
+            {(['5m', '10m', '15m', '30m'] as TimeRange[]).map((val) => {
+              const cfg = RANGE_CONFIGS[val];
+              const isActive = selectedRange === val;
               return (
                 <button
                   key={val}
                   type="button"
-                  onClick={() => setSelectedInterval(val)}
+                  onClick={() => setSelectedRange(val)}
                   className={`px-2.5 py-0.5 rounded-m3-lg text-[11px] font-bold font-mono transition-all ${
                     isActive
                       ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
@@ -276,10 +303,37 @@ export const LiveThroughputChart: React.FC = () => {
           </div>
         </div>
 
-        {/* Stream Filter Toggle: All vs WAN vs Bridge */}
+        {/* Middle: Tick Interval Selector (Sesuai Pilihan Rentang Waktu) */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
-            <Filter className="w-3 h-3 text-sky-500" />
+            <Gauge className="w-3.5 h-3.5 text-emerald-500" />
+            Interval Tick:
+          </span>
+          <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
+            {activeRange.allowedTicks.map((opt) => {
+              const isActive = selectedTickMode === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSelectedTickMode(opt.value)}
+                  className={`px-2 py-0.5 rounded-m3-lg text-[10px] font-bold font-mono transition-all ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: Stream Filter Toggle: All vs WAN vs Bridge */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
+            <Filter className="w-3.5 h-3.5 text-sky-500" />
             Aliran:
           </span>
           <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
@@ -426,13 +480,13 @@ export const LiveThroughputChart: React.FC = () => {
       <div className="flex items-center justify-between text-[10px] font-mono text-m3-on-surface-variant/80 px-1 pt-0.5 border-t border-m3-outline-variant/15">
         <span className="flex items-center gap-1 text-m3-primary font-bold">
           <Clock className="w-3 h-3" />
-          <span>Skala: {activeSetting.desc}</span>
+          <span>Skala: {activeRange.desc} (Tick: per {effectiveTickSec >= 60 ? `${effectiveTickSec / 60} Menit` : `${effectiveTickSec} Detik`})</span>
         </span>
-        <span className="hidden sm:inline">
-          {selectedInterval === '15m'
+        <span className="hidden sm:inline text-emerald-600 dark:text-emerald-400 font-semibold">
+          {selectedRange === '15m'
             ? 'Format Grafana: Kelipatan 5 Menit (16:25, 16:30, 16:35)'
-            : selectedInterval === '5m'
-            ? 'Format Grafana: Kelipatan 1 Menit (16:32:00, 16:33:00)'
+            : selectedRange === '5m'
+            ? 'Format Grafana: Kelipatan 1 Menit (16:32, 16:33, 16:34)'
             : 'Format Grafana: Kelipatan Waktu Real-Time'}
         </span>
       </div>
