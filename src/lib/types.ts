@@ -215,3 +215,29 @@ export interface DashboardWidgetVisibility {
   recent_alerts: boolean;
 }
 
+export type RawMetricCategory =
+  | 'system'
+  | 'hardware_health'
+  | 'cpu_cores'
+  | 'memory_storage'
+  | 'interfaces'
+  | 'optical_sfp'
+  | 'queue_tree'
+  | 'simple_queues'
+  | 'ip_addresses'
+  | 'bridge_fdb'
+  | 'dhcp_neighbors';
+
+export interface RawSnmpMetric {
+  id: string;
+  device_id: string;
+  oid: string;
+  oid_name: string;
+  category: RawMetricCategory;
+  type: 'integer' | 'counter32' | 'counter64' | 'string' | 'timeticks' | 'ipaddress' | 'gauge' | 'hex_string';
+  raw_value: string;
+  parsed_value?: string;
+  unit?: string;
+  collected_at: string;
+}
+

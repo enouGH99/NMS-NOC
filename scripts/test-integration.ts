@@ -22,6 +22,7 @@ import * as DiscoveryRoute from '../src/app/api/discovery/route';
 import * as UsersRoute from '../src/app/api/users/route';
 import * as AuditLogsRoute from '../src/app/api/audit-logs/route';
 import * as QueuesRoute from '../src/app/api/queues/route';
+import * as RawMetricsRoute from '../src/app/api/devices/[id]/raw-metrics/route';
 
 interface TestResult {
   category: string;
@@ -546,6 +547,20 @@ async function runAllIntegrationTests() {
       const json = await res.json();
       assert(json.success === true, 'Expected success === true');
     }
+  });
+
+  // ----------------------------------------------------
+  // 13. RAW SNMP METRICS API (MikroTik hEX S RouterOS v6.48.4)
+  // ----------------------------------------------------
+  await runTest('Raw SNMP API', 'GET /api/devices/[id]/raw-metrics returns raw OIDs and categories from database', async () => {
+    const targetDeviceId = 'dev-1';
+    const req = createRequest(`/api/devices/${targetDeviceId}/raw-metrics?category=all`);
+    const res = await RawMetricsRoute.GET(req, { params: Promise.resolve({ id: targetDeviceId }) });
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(Array.isArray(json.data), 'Expected array of raw metrics');
+    assert(typeof json.totalCount === 'number', 'Expected totalCount number');
   });
 
   // ----------------------------------------------------

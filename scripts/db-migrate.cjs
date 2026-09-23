@@ -206,6 +206,22 @@ const statements = [
     "timestamp" timestamp DEFAULT now() NOT NULL
   );`,
 
+  `CREATE TABLE IF NOT EXISTS "raw_snmp_metrics" (
+    "id" text PRIMARY KEY NOT NULL,
+    "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
+    "oid" text NOT NULL,
+    "oid_name" text NOT NULL,
+    "category" text NOT NULL,
+    "type" text DEFAULT 'string' NOT NULL,
+    "raw_value" text NOT NULL,
+    "parsed_value" text,
+    "unit" text,
+    "collected_at" timestamp DEFAULT now() NOT NULL
+  );`,
+
+  `CREATE INDEX IF NOT EXISTS "idx_raw_snmp_device_cat" ON "raw_snmp_metrics" ("device_id", "category");`,
+  `CREATE INDEX IF NOT EXISTS "idx_raw_snmp_oid" ON "raw_snmp_metrics" ("device_id", "oid");`,
+
   `CREATE TABLE IF NOT EXISTS "auto_discovered_devices" (
     "id" text PRIMARY KEY NOT NULL,
     "ip" text NOT NULL,

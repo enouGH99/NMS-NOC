@@ -15,6 +15,7 @@ import { AddRepairModal } from '@/components/repairs/AddRepairModal';
 import { AddEditDeviceModal } from '@/components/devices/AddEditDeviceModal';
 import { SnmpSyncModal } from '@/components/devices/SnmpSyncModal';
 import { InterfaceTable } from '@/components/devices/InterfaceTable';
+import { RawSnmpMetricsTab } from '@/components/devices/RawSnmpMetricsTab';
 import { QueueTrafficSparkline } from '@/components/dashboard/QueueTrafficSparkline';
 import { QueueTraffic } from '@/lib/types';
 import {
@@ -45,6 +46,7 @@ import {
   FolderTree,
   Tag,
   CornerDownRight,
+  Database,
 } from 'lucide-react';
 import { formatBytes, formatMbps, formatThroughput, formatDate, buildQueueHierarchy } from '@/lib/utils';
 
@@ -231,6 +233,7 @@ export default function DeviceDetailPage() {
             { id: 'interfaces', label: `Interface Port (${deviceInterfaces.length})`, icon: <Layers className="w-4 h-4" /> },
             { id: 'queues', label: `Bandwidth Queue Tree (${deviceQueues.length})`, icon: <SlidersHorizontal className="w-4 h-4" /> },
             { id: 'vpns', label: `VPN Tunnels (${deviceVpns.length})`, icon: <ShieldCheck className="w-4 h-4" /> },
+            { id: 'raw_metrics', label: 'Raw SNMP (v6.48.4)', icon: <Database className="w-4 h-4" /> },
             { id: 'repairs', label: `Riwayat Perbaikan (${deviceRepairs.length})`, icon: <Wrench className="w-4 h-4" /> },
           ]}
           activeTab={activeTab}
@@ -961,7 +964,12 @@ export default function DeviceDetailPage() {
         </M3Card>
       )}
 
-      {/* Tab 5: Repairs */}
+      {/* Tab: Raw SNMP Metrics (RouterOS v6.48.4) */}
+      {activeTab === 'raw_metrics' && (
+        <RawSnmpMetricsTab deviceId={device.id} deviceName={device.name} />
+      )}
+
+      {/* Tab: Repairs */}
       {activeTab === 'repairs' && (
         <M3Card className="p-6 bg-m3-surface-container border border-m3-outline-variant/30 space-y-4 animate-in fade-in">
           <div className="flex items-center justify-between">

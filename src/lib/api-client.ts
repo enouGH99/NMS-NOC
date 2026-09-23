@@ -118,4 +118,16 @@ export const nmsApi = {
 
   getAuditLogs: () => fetchApi('/api/audit-logs'),
   createAuditLog: (data: any) => fetchApi('/api/audit-logs', { method: 'POST', body: JSON.stringify(data) }),
+
+  getRawMetrics: (deviceId: string, options?: { category?: string; search?: string; limit?: number; refresh?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.category && options.category !== 'all') params.set('category', options.category);
+    if (options?.search) params.set('search', options.search);
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.refresh) params.set('refresh', 'true');
+    const query = params.toString();
+    return fetchApi(`/api/devices/${deviceId}/raw-metrics${query ? `?${query}` : ''}`);
+  },
+  exportRawMetrics: (deviceId: string, body?: any) =>
+    fetchApi(`/api/devices/${deviceId}/raw-metrics`, { method: 'POST', body: JSON.stringify(body || {}) }),
 };

@@ -191,6 +191,19 @@ export const deviceMetrics = pgTable('device_metrics', {
   collectedAt: timestamp('collected_at').defaultNow().notNull(),
 });
 
+export const rawSnmpMetrics = pgTable('raw_snmp_metrics', {
+  id: text('id').primaryKey(),
+  deviceId: text('device_id').notNull().references(() => devices.id, { onDelete: 'cascade' }),
+  oid: text('oid').notNull(),
+  oidName: text('oid_name').notNull(),
+  category: text('category').notNull(), // 'system' | 'hardware_health' | 'cpu_cores' | 'memory_storage' | 'interfaces' | 'optical_sfp' | 'queue_tree' | 'simple_queues' | 'ip_addresses' | 'bridge_fdb' | 'dhcp_neighbors'
+  type: text('type').default('string').notNull(), // 'integer' | 'counter32' | 'counter64' | 'string' | 'timeticks' | 'ipaddress' | 'gauge' | 'hex_string'
+  rawValue: text('raw_value').notNull(),
+  parsedValue: text('parsed_value'),
+  unit: text('unit'),
+  collectedAt: timestamp('collected_at').defaultNow().notNull(),
+});
+
 export const deviceStatusHistory = pgTable('device_status_history', {
   id: text('id').primaryKey(),
   deviceId: text('device_id').notNull().references(() => devices.id, { onDelete: 'cascade' }),
