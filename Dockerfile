@@ -47,4 +47,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "node scripts/db-migrate.cjs; node server.js"]
