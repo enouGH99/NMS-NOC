@@ -14,6 +14,7 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-nms-noc-production-super-secret-key-32chars-length-min}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - SNMP_POLL_INTERVAL_SECONDS=${SNMP_POLL_INTERVAL_SECONDS:-15}
     depends_on:
       postgres:
         condition: service_healthy
