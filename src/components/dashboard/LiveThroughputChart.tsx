@@ -25,86 +25,134 @@ import {
   Layers,
   Globe,
   Network,
+  Sparkles,
 } from 'lucide-react';
-import { formatMbps, formatThroughput } from '@/lib/utils';
+import { formatThroughput } from '@/lib/utils';
 import { M3Button } from '../m3/M3Button';
 
 type TimeInterval = '5m' | '10m' | '15m' | '30m';
 type StreamFilter = 'all' | 'wan' | 'lan';
 
+interface IntervalConfig {
+  label: string;
+  value: TimeInterval;
+  durationSec: number;
+  stepSec: number;
+  totalPoints: number;
+  tickStep: number;
+  desc: string;
+}
+
+const INTERVAL_CONFIGS: Record<TimeInterval, IntervalConfig> = {
+  '5m': {
+    label: '5 Menit',
+    value: '5m',
+    durationSec: 300,
+    stepSec: 10,
+    totalPoints: 31,
+    tickStep: 6, // Setiap 6 titik = 60 detik (1 menit) -> 6 ticks
+    desc: 'Interval 10 detik • Rentang 5 Menit Terakhir',
+  },
+  '10m': {
+    label: '10 Menit',
+    value: '10m',
+    durationSec: 600,
+    stepSec: 20,
+    totalPoints: 31,
+    tickStep: 6, // Setiap 6 titik = 120 detik (2 menit) -> 6 ticks
+    desc: 'Interval 20 detik • Rentang 10 Menit Terakhir',
+  },
+  '15m': {
+    label: '15 Menit',
+    value: '15m',
+    durationSec: 900,
+    stepSec: 30,
+    totalPoints: 31,
+    tickStep: 6, // Setiap 6 titik = 180 detik (3 menit) -> 6 ticks
+    desc: 'Interval 30 detik • Rentang 15 Menit Terakhir',
+  },
+  '30m': {
+    label: '30 Menit',
+    value: '30m',
+    durationSec: 1800,
+    stepSec: 60,
+    totalPoints: 31,
+    tickStep: 5, // Setiap 5 titik = 300 detik (5 menit) -> 7 ticks
+    desc: 'Interval 1 menit • Rentang 30 Menit Terakhir',
+  },
+};
+
 export const LiveThroughputChart: React.FC = () => {
-  const { throughputHistory, liveStats, devices, interfaces } = useNms();
+  const { liveStats, devices } = useNms();
   const [selectedInterval, setSelectedInterval] = useState<TimeInterval>('5m');
   const [selectedStream, setSelectedStream] = useState<StreamFilter>('all');
+  const [nowTick, setNowTick] = useState<number>(Date.now());
 
   const isStandby = devices.length === 0;
 
-  // Find WAN & Bridge-LAN interfaces if available
-  const wanInterface = interfaces.find(
-    (i) =>
-      i.name.toLowerCase().includes('wan') ||
-      i.name.toLowerCase() === 'ether1' ||
-      i.name.toLowerCase().includes('pppoe')
-  );
+  // Real-time rolling clock ticker every 2.5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 2500);
+    return () => clearInterval(timer);
+  }, []);
 
-  const bridgeLanInterface = interfaces.find(
-    (i) =>
-      i.type === 'bridge' ||
-      i.name.toLowerCase().includes('bridge') ||
-      i.name.toLowerCase().includes('lan')
-  );
-
-  // Time interval options requested by user
-  const intervalOptions: { label: string; value: TimeInterval; stepSec: number; totalPoints: number }[] = [
-    { label: '5 Menit', value: '5m', stepSec: 10, totalPoints: 30 },
-    { label: '10 Menit', value: '10m', stepSec: 20, totalPoints: 30 },
-    { label: '15 Menit', value: '15m', stepSec: 30, totalPoints: 30 },
-    { label: '30 Menit', value: '30m', stepSec: 60, totalPoints: 30 },
-  ];
-
-  // Dynamic multiplier based on stream filter
+  // Multiplier for stream filtering
   const streamMultiplier = useMemo(() => {
     if (selectedStream === 'wan') return { in: 0.85, out: 0.35, label: 'Jalur WAN ISP (ether1)' };
     if (selectedStream === 'lan') return { in: 0.75, out: 0.80, label: 'Distribusi Bridge LAN' };
     return { in: 1.0, out: 1.0, label: 'Semua Trafik (Agregat)' };
   }, [selectedStream]);
 
-  // Generate or project historical curve points based on selected interval & stream
-  const chartData = useMemo(() => {
-    if (isStandby) return [];
+  const activeConfig = INTERVAL_CONFIGS[selectedInterval] || INTERVAL_CONFIGS['5m'];
 
-    const activeOption = intervalOptions.find((opt) => opt.value === selectedInterval) || intervalOptions[0];
-    const { stepSec, totalPoints } = activeOption;
-    const now = Date.now();
+  // Generate dynamic rolling chart dataset & distinct milestone ticks
+  const { chartData, xTicks } = useMemo(() => {
+    if (isStandby) return { chartData: [], xTicks: [] };
 
+    const { durationSec, stepSec, totalPoints, tickStep } = activeConfig;
     const baseIn = (liveStats.currentInboundMbps || 35) * streamMultiplier.in;
     const baseOut = (liveStats.currentOutboundMbps || 12) * streamMultiplier.out;
 
     const points = [];
-    for (let i = totalPoints - 1; i >= 0; i--) {
-      const t = new Date(now - i * stepSec * 1000);
-      const timeStr = `${t.getHours().toString().padStart(2, '0')}:${t
-        .getMinutes()
-        .toString()
-        .padStart(2, '0')}:${t.getSeconds().toString().padStart(2, '0')}`;
+    const ticks: string[] = [];
 
-      // Create natural time-correlated sinusoidal variance
-      const wave = Math.sin((now / 1000 - i * stepSec) / 120) * 8;
-      const noiseIn = Math.cos((now / 1000 - i * stepSec) / 45) * 4;
-      const noiseOut = Math.sin((now / 1000 - i * stepSec) / 60) * 2;
+    for (let i = 0; i < totalPoints; i++) {
+      // Calculate timestamp from past to now
+      const secondsAgo = (totalPoints - 1 - i) * stepSec;
+      const pointTimestamp = nowTick - secondsAgo * 1000;
+      const d = new Date(pointTimestamp);
+
+      const hours = d.getHours().toString().padStart(2, '0');
+      const minutes = d.getMinutes().toString().padStart(2, '0');
+      const seconds = d.getSeconds().toString().padStart(2, '0');
+
+      // Key for recharts data point (unique per second)
+      const timeKey = `${hours}:${minutes}:${seconds}`;
+
+      // Natural harmonic waveform with jitter
+      const wave = Math.sin((pointTimestamp / 1000) / (durationSec / 15)) * (baseIn * 0.18);
+      const noiseIn = Math.cos((pointTimestamp / 1000) / 25) * (baseIn * 0.08);
+      const noiseOut = Math.sin((pointTimestamp / 1000) / 30) * (baseOut * 0.12);
 
       const inVal = Math.max(0.2, Number((baseIn + wave + noiseIn).toFixed(1)));
-      const outVal = Math.max(0.1, Number((baseOut + wave * 0.4 + noiseOut).toFixed(1)));
+      const outVal = Math.max(0.1, Number((baseOut + wave * 0.3 + noiseOut).toFixed(1)));
 
       points.push({
-        time: timeStr,
+        time: timeKey,
         inbound: inVal,
         outbound: outVal,
       });
+
+      // Pick milestone ticks evenly spaced
+      if (i % tickStep === 0 || i === totalPoints - 1) {
+        ticks.push(timeKey);
+      }
     }
 
-    return points;
-  }, [selectedInterval, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps]);
+    return { chartData: points, xTicks: ticks };
+  }, [selectedInterval, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTick, activeConfig]);
 
   const currentInbound = Number(((liveStats.currentInboundMbps || 0) * streamMultiplier.in).toFixed(1));
   const currentOutbound = Number(((liveStats.currentOutboundMbps || 0) * streamMultiplier.out).toFixed(1));
@@ -133,7 +181,8 @@ export const LiveThroughputChart: React.FC = () => {
                   Standby (0 Node)
                 </span>
               ) : (
-                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live bit/sec
                 </span>
               )}
@@ -168,20 +217,21 @@ export const LiveThroughputChart: React.FC = () => {
             Rentang Waktu:
           </span>
           <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
-            {intervalOptions.map((opt) => {
-              const isActive = selectedInterval === opt.value;
+            {(['5m', '10m', '15m', '30m'] as TimeInterval[]).map((val) => {
+              const cfg = INTERVAL_CONFIGS[val];
+              const isActive = selectedInterval === val;
               return (
                 <button
-                  key={opt.value}
+                  key={val}
                   type="button"
-                  onClick={() => setSelectedInterval(opt.value)}
+                  onClick={() => setSelectedInterval(val)}
                   className={`px-2.5 py-0.5 rounded-m3-lg text-[11px] font-bold font-mono transition-all ${
                     isActive
                       ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
                       : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
                   }`}
                 >
-                  {opt.label}
+                  {cfg.label}
                 </button>
               );
             })}
@@ -268,11 +318,21 @@ export const LiveThroughputChart: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(140, 145, 153, 0.15)" />
               <XAxis
                 dataKey="time"
+                ticks={xTicks}
                 stroke="#8c9199"
                 fontSize={10}
-                tickLine={false}
+                tickLine={true}
                 axisLine={false}
                 fontFamily="monospace"
+                minTickGap={25}
+                tickFormatter={(val: string) => {
+                  // If 30m or 15m or 10m, format cleanly as HH:mm if seconds are 00 or clean
+                  if (selectedInterval === '30m' || selectedInterval === '15m' || selectedInterval === '10m') {
+                    const parts = val.split(':');
+                    if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
+                  }
+                  return val;
+                }}
               />
               <YAxis
                 stroke="#8c9199"
@@ -292,6 +352,7 @@ export const LiveThroughputChart: React.FC = () => {
                   color: '#dfe3e8',
                   boxShadow: '0px 4px 12px rgba(0,0,0,0.3)',
                 }}
+                labelFormatter={(label) => `Waktu: ${label}`}
                 formatter={(value: any, name: any) => [
                   `${value} Mbps (${(Number(value) * 1000).toFixed(0)} Kbps)`,
                   name === 'inbound' ? 'Download (Inbound RX)' : 'Upload (Outbound TX)',
@@ -327,6 +388,23 @@ export const LiveThroughputChart: React.FC = () => {
             </AreaChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      {/* Axis Footer Scale Info */}
+      <div className="flex items-center justify-between text-[10px] font-mono text-m3-on-surface-variant/80 px-1 pt-0.5 border-t border-m3-outline-variant/15">
+        <span className="flex items-center gap-1 text-m3-primary font-bold">
+          <Clock className="w-3 h-3" />
+          <span>Skala: {activeConfig.desc}</span>
+        </span>
+        <span className="hidden sm:inline">
+          {selectedInterval === '30m'
+            ? 'Titik Waktu per 5 Menit'
+            : selectedInterval === '15m'
+            ? 'Titik Waktu per 3 Menit'
+            : selectedInterval === '10m'
+            ? 'Titik Waktu per 2 Menit'
+            : 'Titik Waktu per 1 Menit'}
+        </span>
       </div>
     </M3Card>
   );
