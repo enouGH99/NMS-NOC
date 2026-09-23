@@ -209,6 +209,7 @@ export interface CapacityMetric {
 
 export interface DashboardWidgetVisibility {
   throughput_chart: boolean;
+  wan_health: boolean;
   ping_gauge: boolean;
   simple_queues: boolean;
   vpn_status: boolean;

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useNms } from '@/lib/store';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { LiveThroughputChart } from '@/components/dashboard/LiveThroughputChart';
+import { WanHealthWidget } from '@/components/dashboard/WanHealthWidget';
 import { QueueTrafficChart } from '@/components/dashboard/QueueTrafficChart';
 import { VpnStatusWidget } from '@/components/dashboard/VpnStatusWidget';
 import { RecentAlertsWidget } from '@/components/dashboard/RecentAlertsWidget';
@@ -22,7 +23,6 @@ import {
   SlidersHorizontal,
   RefreshCw,
   Clock,
-  Radio,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -68,7 +68,7 @@ export default function DashboardPage() {
             </span>
           </div>
           <p className="text-xs md:text-sm text-m3-on-surface-variant">
-            Pemantauan performa real-time, throughput bandwidth, dan kesehatan perangkat kantor
+            Pemantauan performa real-time, uplink ISP, throughput bandwidth, dan kesehatan fisik router
           </p>
         </div>
 
@@ -198,38 +198,42 @@ export default function DashboardPage() {
 
       {/* Main Grid: Dynamically rendered based on widget preferences */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Real-time Throughput Area Chart (2 cols) */}
+        {/* Row 1: Real-time Throughput Area Chart (2 cols) + ISP WAN Health (1 col) */}
         {dashboardWidgets.throughput_chart && (
-          <div className="lg:col-span-2">
+          <div className={dashboardWidgets.wan_health ? 'lg:col-span-2' : 'lg:col-span-3'}>
             <LiveThroughputChart />
           </div>
         )}
 
-        {/* Core Gateway Hardware & Latency (1 col) */}
-        {dashboardWidgets.ping_gauge && (
+        {dashboardWidgets.wan_health && (
           <div className={dashboardWidgets.throughput_chart ? 'lg:col-span-1' : 'lg:col-span-3'}>
-            <PingGaugeWidget />
+            <WanHealthWidget />
           </div>
         )}
 
-        {/* Simple Queue Bandwidth (2 cols for rich Ethernet table & graphs) */}
+        {/* Row 2: Queue Tree Bandwidth (2 cols) + Router Hardware Physical Health (1 col) */}
         {dashboardWidgets.simple_queues && (
-          <div className="lg:col-span-2">
+          <div className={dashboardWidgets.ping_gauge ? 'lg:col-span-2' : 'lg:col-span-3'}>
             <QueueTrafficChart />
           </div>
         )}
 
-        {/* VPN Status Widget (1 col) */}
-        {dashboardWidgets.vpn_status && (
-          <div className="lg:col-span-1">
-            <VpnStatusWidget />
+        {dashboardWidgets.ping_gauge && (
+          <div className={dashboardWidgets.simple_queues ? 'lg:col-span-1' : 'lg:col-span-3'}>
+            <PingGaugeWidget />
           </div>
         )}
 
-        {/* Recent Incidents Feed (Full Width 3 cols) */}
+        {/* Row 3: Recent Alerts Feed (2 cols) + VPN Status (1 col) */}
         {dashboardWidgets.recent_alerts && (
-          <div className="lg:col-span-3">
+          <div className={dashboardWidgets.vpn_status ? 'lg:col-span-2' : 'lg:col-span-3'}>
             <RecentAlertsWidget />
+          </div>
+        )}
+
+        {dashboardWidgets.vpn_status && (
+          <div className={dashboardWidgets.recent_alerts ? 'lg:col-span-1' : 'lg:col-span-3'}>
+            <VpnStatusWidget />
           </div>
         )}
       </div>
@@ -249,13 +253,18 @@ export default function DashboardPage() {
             {[
               {
                 key: 'throughput_chart' as const,
-                title: 'Grafik Real-time Throughput',
-                desc: 'Visualisasi grafik live trafik Inbound & Outbound Gateway',
+                title: 'Grafik Real-time Throughput (5m, 10m, 15m, 30m)',
+                desc: 'Visualisasi grafik live trafik Inbound & Outbound Gateway dengan pilihan rentang waktu dan aliran stream',
+              },
+              {
+                key: 'wan_health' as const,
+                title: 'Kesehatan Koneksi ISP (WAN Health)',
+                desc: 'Status uplink ISP, negosiasi link port WAN, throughput real-time, latensi RTT, dan packet loss',
               },
               {
                 key: 'ping_gauge' as const,
-                title: 'Kesehatan Core Gateway & Uptime',
-                desc: 'Metrik CPU, RAM, Suhu Board, dan latensi ping gateway',
+                title: 'Kesehatan Fisik Router & Hardware',
+                desc: 'Metrik beban CPU, memori RAM, flash storage, sensor suhu board/CPU °C, tegangan voltase DC, dan uptime',
               },
               {
                 key: 'simple_queues' as const,
@@ -265,7 +274,7 @@ export default function DashboardPage() {
               {
                 key: 'vpn_status' as const,
                 title: 'Status Tunnel VPN & Remote Users',
-                desc: 'Monitoring koneksi WireGuard, L2TP, IPsec',
+                desc: 'Monitoring koneksi WireGuard, L2TP, IPsec, EoIP',
               },
               {
                 key: 'recent_alerts' as const,

@@ -652,6 +652,7 @@ export const initialCapacityData: CapacityMetric[] = [];
 
 export const initialDashboardWidgets: DashboardWidgetVisibility = {
   throughput_chart: true,
+  wan_health: true,
   ping_gauge: true,
   simple_queues: true,
   vpn_status: true,
