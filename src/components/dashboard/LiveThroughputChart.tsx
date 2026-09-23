@@ -25,7 +25,6 @@ import {
   Layers,
   Globe,
   Network,
-  Sparkles,
 } from 'lucide-react';
 import { formatThroughput } from '@/lib/utils';
 import { M3Button } from '../m3/M3Button';
@@ -33,52 +32,52 @@ import { M3Button } from '../m3/M3Button';
 type TimeInterval = '5m' | '10m' | '15m' | '30m';
 type StreamFilter = 'all' | 'wan' | 'lan';
 
-interface IntervalConfig {
+interface IntervalSetting {
   label: string;
   value: TimeInterval;
   durationSec: number;
   stepSec: number;
-  totalPoints: number;
-  tickStep: number;
+  tickIntervalSec: number; // Jarak antar tick jam (misal 60s = 1 mnt, 300s = 5 mnt seperti Grafana)
+  timeFormat: 'seconds' | 'minutes';
   desc: string;
 }
 
-const INTERVAL_CONFIGS: Record<TimeInterval, IntervalConfig> = {
+const INTERVAL_SETTINGS: Record<TimeInterval, IntervalSetting> = {
   '5m': {
     label: '5 Menit',
     value: '5m',
-    durationSec: 300,
-    stepSec: 10,
-    totalPoints: 31,
-    tickStep: 6, // Setiap 6 titik = 60 detik (1 menit) -> 6 ticks
-    desc: 'Interval 10 detik • Rentang 5 Menit Terakhir',
+    durationSec: 300, // 5 menit
+    stepSec: 5, // resolusi sampling per 5 detik
+    tickIntervalSec: 60, // Tick sumbu X per 1 Menit (HH:mm:00 seperti Grafana)
+    timeFormat: 'seconds',
+    desc: 'Rentang 5 Menit Terakhir (Tick per 1 Menit)',
   },
   '10m': {
     label: '10 Menit',
     value: '10m',
-    durationSec: 600,
-    stepSec: 20,
-    totalPoints: 31,
-    tickStep: 6, // Setiap 6 titik = 120 detik (2 menit) -> 6 ticks
-    desc: 'Interval 20 detik • Rentang 10 Menit Terakhir',
+    durationSec: 600, // 10 menit
+    stepSec: 10, // resolusi sampling per 10 detik
+    tickIntervalSec: 120, // Tick sumbu X per 2 Menit (HH:mm)
+    timeFormat: 'minutes',
+    desc: 'Rentang 10 Menit Terakhir (Tick per 2 Menit)',
   },
   '15m': {
     label: '15 Menit',
     value: '15m',
-    durationSec: 900,
-    stepSec: 30,
-    totalPoints: 31,
-    tickStep: 6, // Setiap 6 titik = 180 detik (3 menit) -> 6 ticks
-    desc: 'Interval 30 detik • Rentang 15 Menit Terakhir',
+    durationSec: 900, // 15 menit
+    stepSec: 15, // resolusi sampling per 15 detik
+    tickIntervalSec: 300, // Tick sumbu X per 5 Menit (HH:mm seperti Grafana: 16:25, 16:30, 16:35)
+    timeFormat: 'minutes',
+    desc: 'Rentang 15 Menit Terakhir (Tick per 5 Menit)',
   },
   '30m': {
     label: '30 Menit',
     value: '30m',
-    durationSec: 1800,
-    stepSec: 60,
-    totalPoints: 31,
-    tickStep: 5, // Setiap 5 titik = 300 detik (5 menit) -> 7 ticks
-    desc: 'Interval 1 menit • Rentang 30 Menit Terakhir',
+    durationSec: 1800, // 30 menit
+    stepSec: 30, // resolusi sampling per 30 detik
+    tickIntervalSec: 300, // Tick sumbu X per 5 Menit (HH:mm)
+    timeFormat: 'minutes',
+    desc: 'Rentang 30 Menit Terakhir (Tick per 5 Menit)',
   },
 };
 
@@ -86,15 +85,15 @@ export const LiveThroughputChart: React.FC = () => {
   const { liveStats, devices } = useNms();
   const [selectedInterval, setSelectedInterval] = useState<TimeInterval>('5m');
   const [selectedStream, setSelectedStream] = useState<StreamFilter>('all');
-  const [nowTick, setNowTick] = useState<number>(Date.now());
+  const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
 
   const isStandby = devices.length === 0;
 
-  // Real-time rolling clock ticker every 2.5 seconds
+  // Realtime clock ticker - updates every 2 seconds
   useEffect(() => {
     const timer = setInterval(() => {
-      setNowTick(Date.now());
-    }, 2500);
+      setNowTimestamp(Date.now());
+    }, 2000);
     return () => clearInterval(timer);
   }, []);
 
@@ -105,54 +104,93 @@ export const LiveThroughputChart: React.FC = () => {
     return { in: 1.0, out: 1.0, label: 'Semua Trafik (Agregat)' };
   }, [selectedStream]);
 
-  const activeConfig = INTERVAL_CONFIGS[selectedInterval] || INTERVAL_CONFIGS['5m'];
+  const activeSetting = INTERVAL_SETTINGS[selectedInterval] || INTERVAL_SETTINGS['5m'];
 
-  // Generate dynamic rolling chart dataset & distinct milestone ticks
-  const { chartData, xTicks } = useMemo(() => {
-    if (isStandby) return { chartData: [], xTicks: [] };
+  // Generate Grafana-style numeric time-series and perfectly aligned round milestone ticks
+  const { chartData, xTicks, xDomain } = useMemo(() => {
+    if (isStandby) return { chartData: [], xTicks: [], xDomain: [0, 1] };
 
-    const { durationSec, stepSec, totalPoints, tickStep } = activeConfig;
+    const { durationSec, stepSec, tickIntervalSec } = activeSetting;
+    const endMs = nowTimestamp;
+    const startMs = endMs - durationSec * 1000;
+
     const baseIn = (liveStats.currentInboundMbps || 35) * streamMultiplier.in;
     const baseOut = (liveStats.currentOutboundMbps || 12) * streamMultiplier.out;
 
     const points = [];
-    const ticks: string[] = [];
+    const totalSteps = Math.floor(durationSec / stepSec);
 
-    for (let i = 0; i < totalPoints; i++) {
-      // Calculate timestamp from past to now
-      const secondsAgo = (totalPoints - 1 - i) * stepSec;
-      const pointTimestamp = nowTick - secondsAgo * 1000;
-      const d = new Date(pointTimestamp);
-
-      const hours = d.getHours().toString().padStart(2, '0');
-      const minutes = d.getMinutes().toString().padStart(2, '0');
-      const seconds = d.getSeconds().toString().padStart(2, '0');
-
-      // Key for recharts data point (unique per second)
-      const timeKey = `${hours}:${minutes}:${seconds}`;
+    // 1. Generate smooth continuous data points
+    for (let i = 0; i <= totalSteps; i++) {
+      const ts = startMs + i * stepSec * 1000;
 
       // Natural harmonic waveform with jitter
-      const wave = Math.sin((pointTimestamp / 1000) / (durationSec / 15)) * (baseIn * 0.18);
-      const noiseIn = Math.cos((pointTimestamp / 1000) / 25) * (baseIn * 0.08);
-      const noiseOut = Math.sin((pointTimestamp / 1000) / 30) * (baseOut * 0.12);
+      const wave = Math.sin(ts / 15000) * (baseIn * 0.18);
+      const noiseIn = Math.cos(ts / 8000) * (baseIn * 0.08);
+      const noiseOut = Math.sin(ts / 9000) * (baseOut * 0.12);
 
       const inVal = Math.max(0.2, Number((baseIn + wave + noiseIn).toFixed(1)));
       const outVal = Math.max(0.1, Number((baseOut + wave * 0.3 + noiseOut).toFixed(1)));
 
       points.push({
-        time: timeKey,
+        timestamp: ts,
         inbound: inVal,
         outbound: outVal,
       });
+    }
 
-      // Pick milestone ticks evenly spaced
-      if (i % tickStep === 0 || i === totalPoints - 1) {
-        ticks.push(timeKey);
+    // 2. Generate clean, round milestone ticks aligned to natural clock intervals (like Grafana)
+    // E.g. For 15m (tickIntervalSec = 300 / 5 min): find round 5-minute timestamps like 16:25, 16:30, 16:35
+    const tickIntervalMs = tickIntervalSec * 1000;
+    const firstRoundTick = Math.ceil(startMs / tickIntervalMs) * tickIntervalMs;
+    const ticks: number[] = [];
+
+    for (let t = firstRoundTick; t <= endMs; t += tickIntervalMs) {
+      // Keep ticks within visible bounds with small margin
+      if (t >= startMs + 10000 && t <= endMs - 5000) {
+        ticks.push(t);
+      } else if (t >= startMs && t <= endMs) {
+        ticks.push(t);
       }
     }
 
-    return { chartData: points, xTicks: ticks };
-  }, [selectedInterval, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTick, activeConfig]);
+    // If ticks array has too few entries (edge case), ensure start and round intervals are populated
+    if (ticks.length < 2) {
+      ticks.length = 0;
+      for (let t = firstRoundTick; t <= endMs; t += tickIntervalMs) {
+        ticks.push(t);
+      }
+    }
+
+    return {
+      chartData: points,
+      xTicks: ticks,
+      xDomain: [startMs, endMs],
+    };
+  }, [selectedInterval, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeSetting]);
+
+  // Format tick labels on X-axis (Grafana format)
+  const formatXAxisTick = (unixMs: number) => {
+    const d = new Date(unixMs);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    const s = d.getSeconds().toString().padStart(2, '0');
+
+    if (activeSetting.timeFormat === 'seconds') {
+      // 5 Menit: HH:mm:ss (e.g. 16:32:00, 16:33:00, 16:34:00)
+      return `${h}:${m}:${s}`;
+    }
+    // 10m, 15m, 30m: HH:mm (e.g. 16:25, 16:30, 16:35)
+    return `${h}:${m}`;
+  };
+
+  const formatTooltipLabel = (unixMs: number) => {
+    const d = new Date(unixMs);
+    return `Waktu: ${d.getHours().toString().padStart(2, '0')}:${d
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+  };
 
   const currentInbound = Number(((liveStats.currentInboundMbps || 0) * streamMultiplier.in).toFixed(1));
   const currentOutbound = Number(((liveStats.currentOutboundMbps || 0) * streamMultiplier.out).toFixed(1));
@@ -210,7 +248,7 @@ export const LiveThroughputChart: React.FC = () => {
 
       {/* Toolbar: Time Interval Selector (5m, 10m, 15m, 30m) & Stream Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5">
-        {/* Interval Selector (5m, 10m, 15m, 30m) */}
+        {/* Interval Selector Buttons (Grafana Style) */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
             <Clock className="w-3 h-3 text-m3-primary" />
@@ -218,7 +256,7 @@ export const LiveThroughputChart: React.FC = () => {
           </span>
           <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
             {(['5m', '10m', '15m', '30m'] as TimeInterval[]).map((val) => {
-              const cfg = INTERVAL_CONFIGS[val];
+              const cfg = INTERVAL_SETTINGS[val];
               const isActive = selectedInterval === val;
               return (
                 <button
@@ -304,7 +342,7 @@ export const LiveThroughputChart: React.FC = () => {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 15, left: -15, bottom: 0 }}>
               <defs>
                 <linearGradient id="inboundGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
@@ -317,22 +355,16 @@ export const LiveThroughputChart: React.FC = () => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(140, 145, 153, 0.15)" />
               <XAxis
-                dataKey="time"
+                dataKey="timestamp"
+                type="number"
+                domain={xDomain as [number, number]}
                 ticks={xTicks}
+                tickFormatter={formatXAxisTick}
                 stroke="#8c9199"
                 fontSize={10}
                 tickLine={true}
                 axisLine={false}
                 fontFamily="monospace"
-                minTickGap={25}
-                tickFormatter={(val: string) => {
-                  // If 30m or 15m or 10m, format cleanly as HH:mm if seconds are 00 or clean
-                  if (selectedInterval === '30m' || selectedInterval === '15m' || selectedInterval === '10m') {
-                    const parts = val.split(':');
-                    if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
-                  }
-                  return val;
-                }}
               />
               <YAxis
                 stroke="#8c9199"
@@ -352,7 +384,7 @@ export const LiveThroughputChart: React.FC = () => {
                   color: '#dfe3e8',
                   boxShadow: '0px 4px 12px rgba(0,0,0,0.3)',
                 }}
-                labelFormatter={(label) => `Waktu: ${label}`}
+                labelFormatter={formatTooltipLabel}
                 formatter={(value: any, name: any) => [
                   `${value} Mbps (${(Number(value) * 1000).toFixed(0)} Kbps)`,
                   name === 'inbound' ? 'Download (Inbound RX)' : 'Upload (Outbound TX)',
@@ -371,7 +403,7 @@ export const LiveThroughputChart: React.FC = () => {
                 type="monotone"
                 dataKey="inbound"
                 stroke="#10b981"
-                strokeWidth={2.5}
+                strokeWidth={2}
                 fillOpacity={1}
                 fill="url(#inboundGrad)"
                 isAnimationActive={false}
@@ -380,7 +412,7 @@ export const LiveThroughputChart: React.FC = () => {
                 type="monotone"
                 dataKey="outbound"
                 stroke="#38bdf8"
-                strokeWidth={2.5}
+                strokeWidth={2}
                 fillOpacity={1}
                 fill="url(#outboundGrad)"
                 isAnimationActive={false}
@@ -390,20 +422,18 @@ export const LiveThroughputChart: React.FC = () => {
         )}
       </div>
 
-      {/* Axis Footer Scale Info */}
+      {/* Axis Footer Scale Info (Grafana Style) */}
       <div className="flex items-center justify-between text-[10px] font-mono text-m3-on-surface-variant/80 px-1 pt-0.5 border-t border-m3-outline-variant/15">
         <span className="flex items-center gap-1 text-m3-primary font-bold">
           <Clock className="w-3 h-3" />
-          <span>Skala: {activeConfig.desc}</span>
+          <span>Skala: {activeSetting.desc}</span>
         </span>
         <span className="hidden sm:inline">
-          {selectedInterval === '30m'
-            ? 'Titik Waktu per 5 Menit'
-            : selectedInterval === '15m'
-            ? 'Titik Waktu per 3 Menit'
-            : selectedInterval === '10m'
-            ? 'Titik Waktu per 2 Menit'
-            : 'Titik Waktu per 1 Menit'}
+          {selectedInterval === '15m'
+            ? 'Format Grafana: Kelipatan 5 Menit (16:25, 16:30, 16:35)'
+            : selectedInterval === '5m'
+            ? 'Format Grafana: Kelipatan 1 Menit (16:32:00, 16:33:00)'
+            : 'Format Grafana: Kelipatan Waktu Real-Time'}
         </span>
       </div>
     </M3Card>
