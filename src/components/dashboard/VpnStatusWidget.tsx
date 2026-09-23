@@ -12,7 +12,6 @@ import {
   Globe,
   User,
   Clock,
-  Radio,
 } from 'lucide-react';
 import { formatBits } from '@/lib/utils';
 
@@ -50,7 +49,7 @@ export const VpnStatusWidget: React.FC = () => {
     }
   };
 
-  // Helper to format verbose uptime to compact
+  // Format compact uptime: "96h 23j 0m"
   const formatCompactUptime = (uptimeStr?: string) => {
     if (!uptimeStr) return '0m';
     return uptimeStr
@@ -96,10 +95,10 @@ export const VpnStatusWidget: React.FC = () => {
         </div>
       </div>
 
-      {/* Tunnel List */}
-      <div className="pt-3 space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-m3-outline-variant/40">
+      {/* Tunnel List: Natural flex expansion without forced max-h or scrollbars when items fit */}
+      <div className="pt-3 space-y-2.5 flex-1">
         {vpnTunnels.length === 0 ? (
-          <div className="text-center py-8 text-m3-on-surface-variant">
+          <div className="text-center py-12 text-m3-on-surface-variant">
             <ShieldCheck className="w-8 h-8 text-m3-primary/40 mx-auto mb-2" />
             <p className="text-xs font-semibold text-m3-on-surface">Tidak ada tunnel VPN aktif</p>
             <p className="text-[11px] text-m3-on-surface-variant/70 mt-1 max-w-xs mx-auto">
@@ -113,10 +112,10 @@ export const VpnStatusWidget: React.FC = () => {
             return (
               <div
                 key={vpn.id}
-                className={`p-3 sm:p-3.5 rounded-m3-2xl border transition-all space-y-2 shadow-2xs ${
+                className={`p-3 rounded-m3-2xl border transition-all space-y-2 shadow-2xs ${
                   isConnected
                     ? 'bg-m3-surface-container border-m3-outline-variant/30 hover:border-emerald-500/40'
-                    : 'bg-m3-surface-container/60 border-m3-outline-variant/20 hover:border-rose-500/30 opacity-80'
+                    : 'bg-m3-surface-container/60 border-m3-outline-variant/20 hover:border-rose-500/30 opacity-75'
                 }`}
               >
                 {/* Row 1: Status Icon, Tunnel Name, Type Badge, and Connection State */}
@@ -179,7 +178,7 @@ export const VpnStatusWidget: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Row 3: Live Throughput (in standard bit/sec) */}
+                {/* Row 3: Live Throughput in standard bit/sec */}
                 {isConnected && (
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-m3-outline-variant/20 text-[10px] font-mono">
                     <span className="text-[10px] text-m3-on-surface-variant font-sans font-semibold">
