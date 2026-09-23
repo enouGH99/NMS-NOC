@@ -557,6 +557,23 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         });
       });
+
+      // Fluctuate live VPN tunnels RX/TX bytes and throughput for active connected tunnels
+      setVpnTunnels(prevTunnels => {
+        if (prevTunnels.length === 0) return prevTunnels;
+        return prevTunnels.map(vpn => {
+          if (vpn.status !== 'connected') return vpn;
+          const rxJitter = (Math.random() - 0.5) * 25000;
+          const txJitter = (Math.random() - 0.5) * 12000;
+          const rxInc = Math.max(5000, Math.round(45000 + rxJitter));
+          const txInc = Math.max(2000, Math.round(20000 + txJitter));
+          return {
+            ...vpn,
+            bytes_in: vpn.bytes_in + rxInc,
+            bytes_out: vpn.bytes_out + txInc,
+          };
+        });
+      });
     }, 4000);
 
     return () => clearInterval(interval);

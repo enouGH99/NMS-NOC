@@ -50,43 +50,54 @@ export const VpnStatusWidget: React.FC = () => {
     }
   };
 
+  // Helper to format verbose uptime to compact
+  const formatCompactUptime = (uptimeStr?: string) => {
+    if (!uptimeStr) return '0m';
+    return uptimeStr
+      .replace(/hari/g, 'h')
+      .replace(/jam/g, 'j')
+      .replace(/menit/g, 'm')
+      .replace(/detik/g, 's')
+      .trim();
+  };
+
   return (
     <M3Card className="p-4 sm:p-5 flex flex-col h-full border border-m3-outline-variant/30 bg-m3-surface-container-low shadow-xs">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-m3-outline-variant/30 gap-2">
+      <div className="flex items-center justify-between pb-3 border-b border-m3-outline-variant/30">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-2 rounded-m3-md bg-m3-primary/15 text-m3-primary shrink-0">
+          <div className="p-2 rounded-m3-xl bg-m3-primary/15 text-m3-primary shrink-0">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm sm:text-base font-bold text-m3-on-surface truncate">
-                Status Tunnel & Sesi VPN
-              </h3>
-              {vpnTunnels.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
-                  {connectedCount} Terkoneksi
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] sm:text-xs text-m3-on-surface-variant truncate">
-              Koneksi Site-to-Site & Remote Sesi Lapangan
+            <h3 className="text-sm sm:text-base font-bold text-m3-on-surface truncate">
+              Status Tunnel & VPN
+            </h3>
+            <p className="text-[11px] text-m3-on-surface-variant truncate">
+              {connectedCount} dari {vpnTunnels.length} Sesi Terkoneksi
             </p>
           </div>
         </div>
 
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing || isGlobalRefreshing}
-          className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-m3-primary hover:bg-m3-surface-container transition-colors shrink-0"
-          title="Segarkan Sesi VPN"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing || isGlobalRefreshing ? 'animate-spin text-m3-primary' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {vpnTunnels.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+              {connectedCount} Online
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || isGlobalRefreshing}
+            className="p-1.5 rounded-lg text-m3-on-surface-variant hover:text-m3-primary hover:bg-m3-surface-container-high transition-colors"
+            title="Segarkan Sesi VPN"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing || isGlobalRefreshing ? 'animate-spin text-m3-primary' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Tunnel List */}
-      <div className="pt-3 space-y-2.5 flex-1 overflow-y-auto max-h-[360px] pr-0.5">
+      <div className="pt-3 space-y-3 flex-1 overflow-y-auto max-h-[500px] pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-m3-outline-variant/40">
         {vpnTunnels.length === 0 ? (
           <div className="text-center py-8 text-m3-on-surface-variant">
             <ShieldCheck className="w-8 h-8 text-m3-primary/40 mx-auto mb-2" />
@@ -102,7 +113,11 @@ export const VpnStatusWidget: React.FC = () => {
             return (
               <div
                 key={vpn.id}
-                className="p-3 rounded-m3-xl bg-m3-surface-container border border-m3-outline-variant/30 hover:border-m3-primary/30 transition-all space-y-2 shadow-2xs"
+                className={`p-3 sm:p-3.5 rounded-m3-2xl border transition-all space-y-2 shadow-2xs ${
+                  isConnected
+                    ? 'bg-m3-surface-container border-m3-outline-variant/30 hover:border-emerald-500/40'
+                    : 'bg-m3-surface-container/60 border-m3-outline-variant/20 hover:border-rose-500/30 opacity-80'
+                }`}
               >
                 {/* Row 1: Status Icon, Tunnel Name, Type Badge, and Connection State */}
                 <div className="flex items-center justify-between gap-2">
@@ -123,11 +138,9 @@ export const VpnStatusWidget: React.FC = () => {
                         <ShieldAlert className="w-4 h-4" />
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-m3-on-surface truncate block" title={vpn.name}>
-                        {vpn.name}
-                      </span>
-                    </div>
+                    <span className="text-xs font-bold text-m3-on-surface truncate" title={vpn.name}>
+                      {vpn.name}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -146,29 +159,33 @@ export const VpnStatusWidget: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Row 2: User, IP, Uptime, and Bit/sec Throughput */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-m3-outline-variant/20 text-[11px]">
-                  {/* IP, User & Uptime */}
-                  <div className="flex flex-wrap items-center gap-2 text-m3-on-surface-variant font-mono">
+                {/* Row 2: User, IP, and Uptime */}
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-m3-on-surface-variant font-mono pt-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-1 bg-m3-surface-container-high px-1.5 py-0.5 rounded text-[10px]">
                       <Globe className="w-3 h-3 text-m3-primary/70" />
                       {vpn.remote_ip || '0.0.0.0'}
                     </span>
-                    <span className="inline-flex items-center gap-1 font-sans font-medium text-[11px] text-m3-on-surface">
+                    <span className="inline-flex items-center gap-1 font-sans font-medium text-m3-on-surface text-[11px]">
                       <User className="w-3 h-3 text-m3-on-surface-variant/70" />
                       {vpn.user || 'Unknown'}
                     </span>
                     {vpn.uptime && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-m3-on-surface-variant">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-m3-on-surface-variant" title={vpn.uptime}>
                         <Clock className="w-2.5 h-2.5" />
-                        {vpn.uptime}
+                        {formatCompactUptime(vpn.uptime)}
                       </span>
                     )}
                   </div>
+                </div>
 
-                  {/* Rx / Tx Bitrate (Standard bit/sec) */}
-                  {isConnected && (
-                    <div className="flex items-center gap-1.5 font-mono text-[10px] shrink-0">
+                {/* Row 3: Live Throughput (in standard bit/sec) */}
+                {isConnected && (
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-m3-outline-variant/20 text-[10px] font-mono">
+                    <span className="text-[10px] text-m3-on-surface-variant font-sans font-semibold">
+                      Trafik Data:
+                    </span>
+                    <div className="flex items-center gap-1.5">
                       <span
                         className="inline-flex items-center text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20"
                         title="Trafik Masuk (Rx)"
@@ -184,8 +201,8 @@ export const VpnStatusWidget: React.FC = () => {
                         {formatBits(vpn.bytes_out)}
                       </span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })
