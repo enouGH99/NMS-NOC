@@ -25,13 +25,11 @@ import {
   Layers,
   Globe,
   Network,
-  Gauge,
 } from 'lucide-react';
 import { formatThroughput } from '@/lib/utils';
 import { M3Button } from '../m3/M3Button';
 
 type TimeRange = '5m' | '10m' | '15m' | '30m';
-type TickIntervalMode = 'auto' | '1m' | '2m' | '5m' | '10m' | '15m';
 type StreamFilter = 'all' | 'wan' | 'lan';
 
 interface RangeConfig {
@@ -39,8 +37,7 @@ interface RangeConfig {
   value: TimeRange;
   durationSec: number;
   samplingStepSec: number;
-  autoTickSec: number;
-  allowedTicks: { label: string; value: TickIntervalMode; sec: number }[];
+  tickIntervalSec: number;
   desc: string;
 }
 
@@ -50,62 +47,38 @@ const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
     value: '5m',
     durationSec: 300,
     samplingStepSec: 5,
-    autoTickSec: 60, // Default 1 menit
-    allowedTicks: [
-      { label: 'Auto (1m)', value: 'auto', sec: 60 },
-      { label: '1 Menit', value: '1m', sec: 60 },
-      { label: '5 Menit', value: '5m', sec: 300 },
-    ],
-    desc: 'Rentang 5 Menit Terakhir',
+    tickIntervalSec: 60, // 1 Menit (Grafana standard for 5m)
+    desc: 'Rentang 5 Menit Terakhir (Tick: 1 Menit)',
   },
   '10m': {
     label: '10 Menit',
     value: '10m',
     durationSec: 600,
     samplingStepSec: 10,
-    autoTickSec: 120, // Default 2 menit
-    allowedTicks: [
-      { label: 'Auto (2m)', value: 'auto', sec: 120 },
-      { label: '1 Menit', value: '1m', sec: 60 },
-      { label: '2 Menit', value: '2m', sec: 120 },
-      { label: '5 Menit', value: '5m', sec: 300 },
-    ],
-    desc: 'Rentang 10 Menit Terakhir',
+    tickIntervalSec: 120, // 2 Menit
+    desc: 'Rentang 10 Menit Terakhir (Tick: 2 Menit)',
   },
   '15m': {
     label: '15 Menit',
     value: '15m',
     durationSec: 900,
     samplingStepSec: 15,
-    autoTickSec: 300, // Default 5 menit (16:25, 16:30, 16:35 seperti Grafana)
-    allowedTicks: [
-      { label: 'Auto (5m)', value: 'auto', sec: 300 },
-      { label: '2 Menit', value: '2m', sec: 120 },
-      { label: '5 Menit', value: '5m', sec: 300 },
-      { label: '15 Menit', value: '15m', sec: 900 },
-    ],
-    desc: 'Rentang 15 Menit Terakhir',
+    tickIntervalSec: 300, // 5 Menit (Grafana standard for 15m: 16:25, 16:30, 16:35)
+    desc: 'Rentang 15 Menit Terakhir (Tick: 5 Menit)',
   },
   '30m': {
     label: '30 Menit',
     value: '30m',
     durationSec: 1800,
     samplingStepSec: 30,
-    autoTickSec: 300, // Default 5 menit
-    allowedTicks: [
-      { label: 'Auto (5m)', value: 'auto', sec: 300 },
-      { label: '5 Menit', value: '5m', sec: 300 },
-      { label: '10 Menit', value: '10m', sec: 600 },
-      { label: '15 Menit', value: '15m', sec: 900 },
-    ],
-    desc: 'Rentang 30 Menit Terakhir',
+    tickIntervalSec: 300, // 5 Menit
+    desc: 'Rentang 30 Menit Terakhir (Tick: 5 Menit)',
   },
 };
 
 export const LiveThroughputChart: React.FC = () => {
   const { liveStats, devices } = useNms();
   const [selectedRange, setSelectedRange] = useState<TimeRange>('5m');
-  const [selectedTickMode, setSelectedTickMode] = useState<TickIntervalMode>('auto');
   const [selectedStream, setSelectedStream] = useState<StreamFilter>('all');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
   const [apiData, setApiData] = useState<{
@@ -119,7 +92,6 @@ export const LiveThroughputChart: React.FC = () => {
       currentOutbound: number;
     } | null;
   }>({ points: [], summary: null });
-  const [isLiveConnected, setIsLiveConnected] = useState<boolean>(true);
 
   const isStandby = devices.length === 0;
 
@@ -149,11 +121,10 @@ export const LiveThroughputChart: React.FC = () => {
               points: json.points || [],
               summary: json.summary || null,
             });
-            setIsLiveConnected(true);
           }
         }
       } catch (err) {
-        if (isMounted) setIsLiveConnected(false);
+        // Fallback gracefully
       }
     }
 
@@ -165,13 +136,6 @@ export const LiveThroughputChart: React.FC = () => {
     };
   }, [selectedRange, selectedStream]);
 
-  // Calculate actual effective tick interval in seconds
-  const effectiveTickSec = useMemo(() => {
-    if (selectedTickMode === 'auto') return activeRange.autoTickSec;
-    const match = activeRange.allowedTicks.find((t) => t.value === selectedTickMode);
-    return match ? match.sec : activeRange.autoTickSec;
-  }, [selectedTickMode, activeRange]);
-
   // Stream Multiplier
   const streamMultiplier = useMemo(() => {
     if (selectedStream === 'wan') return { in: 0.85, out: 0.35, label: 'Jalur WAN ISP (ether1)' };
@@ -179,19 +143,11 @@ export const LiveThroughputChart: React.FC = () => {
     return { in: 1.0, out: 1.0, label: 'Semua Trafik (Agregat)' };
   }, [selectedStream]);
 
-  // Reset tickMode to 'auto' when user switches range if previous mode is not allowed in new range
-  useEffect(() => {
-    const isAllowed = activeRange.allowedTicks.some((t) => t.value === selectedTickMode);
-    if (!isAllowed) {
-      setSelectedTickMode('auto');
-    }
-  }, [selectedRange, activeRange, selectedTickMode]);
-
-  // Generate Grafana-style time series & round ticks
+  // Generate Grafana-style time series & round ticks automatically matching selected range
   const { chartData, xTicks, xDomain } = useMemo(() => {
     if (isStandby) return { chartData: [], xTicks: [], xDomain: [0, 1] };
 
-    const { durationSec, samplingStepSec } = activeRange;
+    const { durationSec, samplingStepSec, tickIntervalSec } = activeRange;
     const endMs = nowTimestamp;
     const startMs = endMs - durationSec * 1000;
 
@@ -223,8 +179,8 @@ export const LiveThroughputChart: React.FC = () => {
       }
     }
 
-    // Generate clean round milestone ticks matching the chosen tick interval (Grafana standard)
-    const tickMs = effectiveTickSec * 1000;
+    // Generate clean round milestone ticks matching the chosen range interval (Grafana standard)
+    const tickMs = tickIntervalSec * 1000;
     const firstRoundTick = Math.ceil(startMs / tickMs) * tickMs;
     const ticks: number[] = [];
 
@@ -242,7 +198,7 @@ export const LiveThroughputChart: React.FC = () => {
       xTicks: ticks,
       xDomain: [startMs, endMs],
     };
-  }, [selectedRange, effectiveTickSec, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange, apiData.points]);
+  }, [selectedRange, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange, apiData.points]);
 
   // Format tick labels on X-axis (Grafana format)
   const formatXAxisTick = (unixMs: number) => {
@@ -251,8 +207,8 @@ export const LiveThroughputChart: React.FC = () => {
     const m = d.getMinutes().toString().padStart(2, '0');
     const s = d.getSeconds().toString().padStart(2, '0');
 
-    // If tick step is in seconds or 5m range with seconds precision
-    if (effectiveTickSec < 60) {
+    // If tick step is in seconds
+    if (activeRange.tickIntervalSec < 60) {
       return `${h}:${m}:${s}`;
     }
     // Standard Grafana minute precision: 16:25, 16:30, 16:35
@@ -325,9 +281,9 @@ export const LiveThroughputChart: React.FC = () => {
         </div>
       </div>
 
-      {/* Toolbar: Time Range, Tick Interval Adjuster, & Stream Filter */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-0.5">
-        {/* Left: Rentang Waktu Buttons */}
+      {/* Clean Minimalist Toolbar: Time Range (Left) & Stream Filter (Right) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-0.5">
+        {/* Left: Rentang Waktu Buttons (Grafana style) */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
             <Clock className="w-3.5 h-3.5 text-m3-primary" />
@@ -342,40 +298,13 @@ export const LiveThroughputChart: React.FC = () => {
                   key={val}
                   type="button"
                   onClick={() => setSelectedRange(val)}
-                  className={`px-2.5 py-0.5 rounded-m3-lg text-[11px] font-bold font-mono transition-all ${
+                  className={`px-3 py-1 rounded-m3-lg text-xs font-bold font-mono transition-all ${
                     isActive
                       ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
                       : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
                   }`}
                 >
                   {cfg.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Middle: Tick Interval Selector (Sesuai Pilihan Rentang Waktu) */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
-            <Gauge className="w-3.5 h-3.5 text-emerald-500" />
-            Interval Tick:
-          </span>
-          <div className="inline-flex items-center p-0.5 rounded-m3-xl bg-m3-surface-container-high border border-m3-outline-variant/30">
-            {activeRange.allowedTicks.map((opt) => {
-              const isActive = selectedTickMode === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setSelectedTickMode(opt.value)}
-                  className={`px-2 py-0.5 rounded-m3-lg text-[10px] font-bold font-mono transition-all ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-2xs'
-                      : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
-                  }`}
-                >
-                  {opt.label}
                 </button>
               );
             })}
@@ -392,37 +321,37 @@ export const LiveThroughputChart: React.FC = () => {
             <button
               type="button"
               onClick={() => setSelectedStream('all')}
-              className={`px-2 py-0.5 rounded-m3-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-m3-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                 selectedStream === 'all'
                   ? 'bg-m3-primary text-m3-on-primary shadow-2xs'
-                  : 'text-m3-on-surface-variant hover:text-m3-on-surface'
+                  : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
               }`}
             >
-              <Network className="w-3 h-3" />
+              <Network className="w-3.5 h-3.5" />
               <span>Semua</span>
             </button>
             <button
               type="button"
               onClick={() => setSelectedStream('wan')}
-              className={`px-2 py-0.5 rounded-m3-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-m3-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                 selectedStream === 'wan'
                   ? 'bg-sky-600 text-white shadow-2xs'
-                  : 'text-m3-on-surface-variant hover:text-m3-on-surface'
+                  : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
               }`}
             >
-              <Globe className="w-3 h-3" />
+              <Globe className="w-3.5 h-3.5" />
               <span>ISP (WAN)</span>
             </button>
             <button
               type="button"
               onClick={() => setSelectedStream('lan')}
-              className={`px-2 py-0.5 rounded-m3-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-m3-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                 selectedStream === 'lan'
                   ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-m3-on-surface-variant hover:text-m3-on-surface'
+                  : 'text-m3-on-surface-variant hover:text-m3-on-surface hover:bg-m3-surface-container-highest'
               }`}
             >
-              <Layers className="w-3 h-3" />
+              <Layers className="w-3.5 h-3.5" />
               <span>Bridge LAN</span>
             </button>
           </div>
@@ -554,14 +483,16 @@ export const LiveThroughputChart: React.FC = () => {
       <div className="flex items-center justify-between text-[10px] font-mono text-m3-on-surface-variant/80 px-1 pt-0.5 border-t border-m3-outline-variant/15">
         <span className="flex items-center gap-1 text-m3-primary font-bold">
           <Clock className="w-3 h-3" />
-          <span>Skala: {activeRange.desc} (Tick: per {effectiveTickSec >= 60 ? `${effectiveTickSec / 60} Menit` : `${effectiveTickSec} Detik`})</span>
+          <span>Skala: {activeRange.desc}</span>
         </span>
         <span className="hidden sm:inline text-emerald-600 dark:text-emerald-400 font-semibold">
           {selectedRange === '15m'
             ? 'Format Grafana: Kelipatan 5 Menit (16:25, 16:30, 16:35)'
-            : selectedRange === '5m'
-            ? 'Format Grafana: Kelipatan 1 Menit (16:32, 16:33, 16:34)'
-            : 'Format Grafana: Kelipatan Waktu Real-Time'}
+            : selectedRange === '30m'
+            ? 'Format Grafana: Kelipatan 5 Menit (16:05, 16:10, 16:15...)'
+            : selectedRange === '10m'
+            ? 'Format Grafana: Kelipatan 2 Menit (16:26, 16:28, 16:30...)'
+            : 'Format Grafana: Kelipatan 1 Menit (16:32, 16:33, 16:34)'}
         </span>
       </div>
     </M3Card>
