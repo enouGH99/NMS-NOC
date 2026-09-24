@@ -482,13 +482,11 @@ export const LiveThroughputChart: React.FC = () => {
           <span>Skala: {activeRange.desc}</span>
         </span>
         <span className="hidden sm:inline text-emerald-600 dark:text-emerald-400 font-semibold">
-          {selectedRange === '15m'
-            ? 'Format Grafana: Kelipatan 5 Menit (16:25, 16:30, 16:35)'
-            : selectedRange === '30m'
-            ? 'Format Grafana: Kelipatan 5 Menit (16:05, 16:10, 16:15...)'
-            : selectedRange === '10m'
-            ? 'Format Grafana: Kelipatan 2 Menit (16:26, 16:28, 16:30...)'
-            : 'Format Grafana: Kelipatan 1 Menit (16:32, 16:33, 16:34)'}
+          Format Grafana: Kelipatan {activeRange.tickIntervalSec >= 60 ? `${activeRange.tickIntervalSec / 60} Menit` : `${activeRange.tickIntervalSec} Detik`} (
+          {xTicks.length <= 6
+            ? xTicks.map((t) => formatXAxisTick(t)).join(', ')
+            : `${xTicks.slice(0, 3).map((t) => formatXAxisTick(t)).join(', ')}, ..., ${formatXAxisTick(xTicks[xTicks.length - 1])}`}
+          )
         </span>
       </div>
     </M3Card>
