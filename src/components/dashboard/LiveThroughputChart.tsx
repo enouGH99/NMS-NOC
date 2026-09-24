@@ -179,19 +179,14 @@ export const LiveThroughputChart: React.FC = () => {
       }
     }
 
-    // Generate clean round milestone ticks matching the chosen range interval (Grafana standard)
-    const tickMs = tickIntervalSec * 1000;
-    const firstRoundTick = Math.ceil(startMs / tickMs) * tickMs;
+    // Generate clean milestone ticks spanning the FULL selected duration from startMs to endMs (Grafana standard)
+    const tickStepMs = tickIntervalSec * 1000;
     const ticks: number[] = [];
 
-    for (let t = firstRoundTick; t <= endMs; t += tickMs) {
+    for (let t = startMs; t < endMs - tickStepMs * 0.35; t += tickStepMs) {
       ticks.push(t);
     }
-
-    // If ticks list is empty or single, guarantee boundary ticks
-    if (ticks.length === 0) {
-      ticks.push(startMs, endMs);
-    }
+    ticks.push(endMs);
 
     return {
       chartData: points,
@@ -400,6 +395,7 @@ export const LiveThroughputChart: React.FC = () => {
                 tickLine={true}
                 axisLine={false}
                 fontFamily="monospace"
+                interval={0}
               />
               <YAxis
                 stroke="#8c9199"
