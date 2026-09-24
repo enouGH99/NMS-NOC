@@ -37,7 +37,8 @@ interface RangeConfig {
   value: TimeRange;
   durationSec: number;
   samplingStepSec: number;
-  tickIntervalSec: number;
+  divisions: number; // Jumlah segmen pembagi milestone
+  intervalLabel: string;
   desc: string;
 }
 
@@ -47,32 +48,36 @@ const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
     value: '5m',
     durationSec: 300,
     samplingStepSec: 5,
-    tickIntervalSec: 60, // 1 Menit (Grafana standard for 5m)
-    desc: 'Rentang 5 Menit Terakhir (Tick: 1 Menit)',
+    divisions: 2, // 3 titik: Awal (5m lalu), Tengah (2.5m lalu), Sekarang
+    intervalLabel: 'Awal, Tengah & Sekarang (3 Titik)',
+    desc: 'Rentang 5 Menit Terakhir (Real-time Live)',
   },
   '10m': {
     label: '10 Menit',
     value: '10m',
     durationSec: 600,
     samplingStepSec: 10,
-    tickIntervalSec: 120, // 2 Menit
-    desc: 'Rentang 10 Menit Terakhir (Tick: 2 Menit)',
+    divisions: 2, // 3 titik: Awal (10m lalu), Tengah (5m lalu), Sekarang (per 5 menit)
+    intervalLabel: 'Kelipatan 5 Menit (3 Titik)',
+    desc: 'Rentang 10 Menit Terakhir (Milestone per 5 Menit)',
   },
   '15m': {
     label: '15 Menit',
     value: '15m',
     durationSec: 900,
     samplingStepSec: 15,
-    tickIntervalSec: 300, // 5 Menit (Grafana standard for 15m: 16:25, 16:30, 16:35)
-    desc: 'Rentang 15 Menit Terakhir (Tick: 5 Menit)',
+    divisions: 3, // 4 titik: Awal (15m lalu), 10m lalu, 5m lalu, Sekarang (per 5 menit)
+    intervalLabel: 'Kelipatan 5 Menit (4 Titik)',
+    desc: 'Rentang 15 Menit Terakhir (Milestone per 5 Menit)',
   },
   '30m': {
     label: '30 Menit',
     value: '30m',
     durationSec: 1800,
     samplingStepSec: 30,
-    tickIntervalSec: 300, // 5 Menit
-    desc: 'Rentang 30 Menit Terakhir (Tick: 5 Menit)',
+    divisions: 3, // 4 titik: Awal (30m lalu), 20m lalu, 10m lalu, Sekarang (per 10 menit)
+    intervalLabel: 'Kelipatan 10 Menit (4 Titik)',
+    desc: 'Rentang 30 Menit Terakhir (Milestone per 10 Menit)',
   },
 };
 
@@ -143,21 +148,19 @@ export const LiveThroughputChart: React.FC = () => {
     return { in: 1.0, out: 1.0, label: 'Semua Trafik (Agregat)' };
   }, [selectedStream]);
 
-  // Generate Grafana-style time series & round ticks automatically matching selected range
+  // Model 3 (IT Support Ideal): Generate clean, evenly spaced 3 to 4 milestone ticks
   const { chartData, xTicks, xDomain } = useMemo(() => {
     if (isStandby) return { chartData: [], xTicks: [], xDomain: [0, 1] };
 
-    const { durationSec, samplingStepSec, tickIntervalSec } = activeRange;
-    const endMs = nowTimestamp;
+    const { durationSec, samplingStepSec, divisions } = activeRange;
+    const endMs = Math.floor(nowTimestamp / 1000) * 1000;
     const startMs = endMs - durationSec * 1000;
 
     let points: { timestamp: number; inbound: number; outbound: number }[] = [];
 
     if (apiData.points && apiData.points.length > 0) {
-      // Use real points from backend API
       points = apiData.points;
     } else {
-      // Fallback synthetic wave matching liveStats
       const baseIn = (liveStats.currentInboundMbps || 35) * streamMultiplier.in;
       const baseOut = (liveStats.currentOutboundMbps || 12) * streamMultiplier.out;
       const totalSteps = Math.floor(durationSec / samplingStepSec);
@@ -179,14 +182,12 @@ export const LiveThroughputChart: React.FC = () => {
       }
     }
 
-    // Generate clean milestone ticks spanning the FULL selected duration from startMs to endMs (Grafana standard)
-    const tickStepMs = tickIntervalSec * 1000;
+    // Generate 3 to 4 clean milestone ticks spanning Start -> Milestones -> End
     const ticks: number[] = [];
-
-    for (let t = startMs; t < endMs - tickStepMs * 0.35; t += tickStepMs) {
-      ticks.push(t);
+    const stepMs = (durationSec * 1000) / divisions;
+    for (let i = 0; i <= divisions; i++) {
+      ticks.push(Math.round(startMs + i * stepMs));
     }
-    ticks.push(endMs);
 
     return {
       chartData: points,
@@ -195,18 +196,11 @@ export const LiveThroughputChart: React.FC = () => {
     };
   }, [selectedRange, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange, apiData.points]);
 
-  // Format tick labels on X-axis (Grafana format)
+  // Format tick labels on X-axis (Clean HH:mm)
   const formatXAxisTick = (unixMs: number) => {
     const d = new Date(unixMs);
     const h = d.getHours().toString().padStart(2, '0');
     const m = d.getMinutes().toString().padStart(2, '0');
-    const s = d.getSeconds().toString().padStart(2, '0');
-
-    // If tick step is in seconds
-    if (activeRange.tickIntervalSec < 60) {
-      return `${h}:${m}:${s}`;
-    }
-    // Standard Grafana minute precision: 16:25, 16:30, 16:35
     return `${h}:${m}`;
   };
 
@@ -278,7 +272,7 @@ export const LiveThroughputChart: React.FC = () => {
 
       {/* Clean Minimalist Toolbar: Time Range (Left) & Stream Filter (Right) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-0.5">
-        {/* Left: Rentang Waktu Buttons (Grafana style) */}
+        {/* Left: Rentang Waktu Buttons */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-bold text-m3-on-surface-variant flex items-center gap-1 font-mono">
             <Clock className="w-3.5 h-3.5 text-m3-primary" />
@@ -475,18 +469,14 @@ export const LiveThroughputChart: React.FC = () => {
         </div>
       )}
 
-      {/* Axis Footer Scale Info (Grafana Style) */}
+      {/* Axis Footer Scale Info (Model 3 IT Support) */}
       <div className="flex items-center justify-between text-[10px] font-mono text-m3-on-surface-variant/80 px-1 pt-0.5 border-t border-m3-outline-variant/15">
         <span className="flex items-center gap-1 text-m3-primary font-bold">
           <Clock className="w-3 h-3" />
           <span>Skala: {activeRange.desc}</span>
         </span>
         <span className="hidden sm:inline text-emerald-600 dark:text-emerald-400 font-semibold">
-          Format Grafana: Kelipatan {activeRange.tickIntervalSec >= 60 ? `${activeRange.tickIntervalSec / 60} Menit` : `${activeRange.tickIntervalSec} Detik`} (
-          {xTicks.length <= 6
-            ? xTicks.map((t) => formatXAxisTick(t)).join(', ')
-            : `${xTicks.slice(0, 3).map((t) => formatXAxisTick(t)).join(', ')}, ..., ${formatXAxisTick(xTicks[xTicks.length - 1])}`}
-          )
+          Milestone Sumbu: {xTicks.map((t) => formatXAxisTick(t)).join(' ── ')}
         </span>
       </div>
     </M3Card>
