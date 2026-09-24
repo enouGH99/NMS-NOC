@@ -87,6 +87,8 @@ export const LiveThroughputChart: React.FC = () => {
   const [selectedStream, setSelectedStream] = useState<StreamFilter>('all');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
   const [apiData, setApiData] = useState<{
+    startTime?: number;
+    endTime?: number;
     points: { timestamp: number; inbound: number; outbound: number }[];
     summary: {
       avgInbound: number;
@@ -114,6 +116,9 @@ export const LiveThroughputChart: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
+    // Reset apiData immediately to prevent stale timestamp mismatch across ranges
+    setApiData({ points: [], summary: null });
+
     async function fetchThroughputHistory() {
       try {
         const res = await fetch(
@@ -123,6 +128,8 @@ export const LiveThroughputChart: React.FC = () => {
           const json = await res.json();
           if (json.success && isMounted) {
             setApiData({
+              startTime: json.startTime,
+              endTime: json.endTime,
               points: json.points || [],
               summary: json.summary || null,
             });
@@ -153,8 +160,12 @@ export const LiveThroughputChart: React.FC = () => {
     if (isStandby) return { chartData: [], xTicks: [], xDomain: [0, 1] };
 
     const { durationSec, samplingStepSec, divisions } = activeRange;
-    const endMs = Math.floor(nowTimestamp / 1000) * 1000;
-    const startMs = endMs - durationSec * 1000;
+    const endMs = (apiData.points && apiData.points.length > 0 && apiData.endTime) 
+      ? apiData.endTime 
+      : Math.floor(nowTimestamp / 1000) * 1000;
+    const startMs = (apiData.points && apiData.points.length > 0 && apiData.startTime)
+      ? apiData.startTime
+      : endMs - durationSec * 1000;
 
     let points: { timestamp: number; inbound: number; outbound: number }[] = [];
 
@@ -194,7 +205,7 @@ export const LiveThroughputChart: React.FC = () => {
       xTicks: ticks,
       xDomain: [startMs, endMs],
     };
-  }, [selectedRange, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange, apiData.points]);
+  }, [selectedRange, streamMultiplier, isStandby, liveStats.currentInboundMbps, liveStats.currentOutboundMbps, nowTimestamp, activeRange, apiData]);
 
   // Format tick labels on X-axis (Clean HH:mm)
   const formatXAxisTick = (unixMs: number) => {
