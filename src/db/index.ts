@@ -48,6 +48,8 @@ export { schema };
       );
       CREATE INDEX IF NOT EXISTS "idx_raw_snmp_device_cat" ON "raw_snmp_metrics" ("device_id", "category");
       CREATE INDEX IF NOT EXISTS "idx_raw_snmp_oid" ON "raw_snmp_metrics" ("device_id", "oid");
+      CREATE INDEX IF NOT EXISTS "idx_device_metrics_lookup" ON "device_metrics" ("device_id", "metric_name", "collected_at" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_device_metrics_time" ON "device_metrics" ("collected_at" DESC);
     `);
   } catch (err) {
     // Suppress in build/offline environments

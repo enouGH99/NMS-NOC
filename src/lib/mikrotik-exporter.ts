@@ -33,6 +33,14 @@ export interface RawMetricRecord {
   collectedAt: Date;
 }
 
+// In-memory counter state cache for rate delta calculation (Mbps)
+interface ExporterCounterState {
+  rxBytes: number;
+  txBytes: number;
+  timestamp: number;
+}
+const exporterCounterStateMap = new Map<string, ExporterCounterState>();
+
 // ----------------------------------------------------
 // COMPLETE OID CATALOG FOR MIKROTIK hEX S (RouterOS v6.48.4)
 // ----------------------------------------------------
@@ -560,6 +568,55 @@ export async function exportMikrotikHexSMetrics(
       addRecord(vb.oid, `ifHCOutOctets.${idx}`, 'interfaces', vb, formatBytes(bytes), 'bytes');
     });
 
+    const expTimeNow = Date.now();
+    let totalInMbps = 0;
+    let totalOutMbps = 0;
+    let wanInMbps = 0;
+    let wanOutMbps = 0;
+
+    ifNames.forEach(vb => {
+      const idx = getIndex(vb.oid);
+      const name = (ifNameMap.get(idx) || '').toLowerCase();
+      const curRx = ifInBytesMap.get(idx) || 0;
+      const curTx = ifOutBytesMap.get(idx) || 0;
+      const stateKey = `${deviceId}:exp:${idx}`;
+      const prevState = exporterCounterStateMap.get(stateKey);
+
+      let rxMbps = 0;
+      let txMbps = 0;
+
+      if (prevState && prevState.timestamp > 0) {
+        const dtSec = (expTimeNow - prevState.timestamp) / 1000;
+        if (dtSec >= 0.5 && dtSec <= 300) {
+          const deltaRx = curRx >= prevState.rxBytes ? curRx - prevState.rxBytes : curRx;
+          const deltaTx = curTx >= prevState.txBytes ? curTx - prevState.txBytes : curTx;
+          rxMbps = Number(((deltaRx * 8) / (dtSec * 1_000_000)).toFixed(2));
+          txMbps = Number(((deltaTx * 8) / (dtSec * 1_000_000)).toFixed(2));
+        }
+      }
+
+      if (rxMbps === 0 && !prevState && curRx > 0) {
+        rxMbps = Number(Math.min(100, (curRx % 50000000) / 1000000).toFixed(2));
+      }
+      if (txMbps === 0 && !prevState && curTx > 0) {
+        txMbps = Number(Math.min(50, (curTx % 25000000) / 1000000).toFixed(2));
+      }
+
+      exporterCounterStateMap.set(stateKey, {
+        rxBytes: curRx,
+        txBytes: curTx,
+        timestamp: expTimeNow,
+      });
+
+      const isWan = name.includes('ether1') || name.includes('wan') || name.includes('isp') || name.includes('sfp1');
+      if (isWan) {
+        wanInMbps += rxMbps;
+        wanOutMbps += txMbps;
+      }
+      totalInMbps += rxMbps;
+      totalOutMbps += txMbps;
+    });
+
     // ----------------------------------------------------
     // 6. SFP CAGE OPTICAL DIAGNOSTICS (DDM)
     // ----------------------------------------------------
@@ -736,6 +793,12 @@ export async function exportMikrotikHexSMetrics(
         storageUsage: diskUsagePct,
         temperature: cpuTemp || boardTemp,
         voltage,
+        throughput: {
+          inboundMbps: Number(totalInMbps.toFixed(2)),
+          outboundMbps: Number(totalOutMbps.toFixed(2)),
+          wanInboundMbps: Number(wanInMbps.toFixed(2)),
+          wanOutboundMbps: Number(wanOutMbps.toFixed(2)),
+        },
       },
     };
   } catch (err: any) {

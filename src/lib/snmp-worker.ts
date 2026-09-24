@@ -6,7 +6,7 @@
 
 import { db } from '@/db';
 import { devices, alertRules, alerts, deviceMetrics, rawSnmpMetrics } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, lt } from 'drizzle-orm';
 import { exportMikrotikHexSMetrics } from './mikrotik-exporter';
 
 interface WorkerState {
@@ -96,18 +96,35 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
         totalOidsExported += exportRes.totalMetricsExported;
         devicesPolled++;
 
-        // Record time-series metrics
+        // Record time-series metrics (CPU, RAM, Temp, & Live Throughput)
         if (exportRes.systemSummary) {
           const now = new Date();
           const s = exportRes.systemSummary;
-          const metricEntries = [
+          const metricEntries: any[] = [
             { id: `dm-${dev.id}-cpu-${Date.now()}`, deviceId: dev.id, metricName: 'cpu_usage', metricLabel: 'Beban CPU', value: s.cpuUsage, unit: '%', collectedAt: now },
             { id: `dm-${dev.id}-ram-${Date.now()}`, deviceId: dev.id, metricName: 'ram_usage', metricLabel: 'Pemakaian RAM', value: s.ramUsage, unit: '%', collectedAt: now },
             { id: `dm-${dev.id}-temp-${Date.now()}`, deviceId: dev.id, metricName: 'temperature', metricLabel: 'Suhu Board', value: s.temperature, unit: '°C', collectedAt: now },
           ];
 
+          if (s.throughput) {
+            metricEntries.push(
+              { id: `dm-${dev.id}-tin-${Date.now()}`, deviceId: dev.id, metricName: 'throughput_in', metricLabel: 'Trafik Inbound (Agregat)', value: s.throughput.inboundMbps, unit: 'Mbps', collectedAt: now },
+              { id: `dm-${dev.id}-tout-${Date.now()}`, deviceId: dev.id, metricName: 'throughput_out', metricLabel: 'Trafik Outbound (Agregat)', value: s.throughput.outboundMbps, unit: 'Mbps', collectedAt: now },
+              { id: `dm-${dev.id}-win-${Date.now()}`, deviceId: dev.id, metricName: 'wan_throughput_in', metricLabel: 'WAN ISP Inbound', value: s.throughput.wanInboundMbps, unit: 'Mbps', collectedAt: now },
+              { id: `dm-${dev.id}-wout-${Date.now()}`, deviceId: dev.id, metricName: 'wan_throughput_out', metricLabel: 'WAN ISP Outbound', value: s.throughput.wanOutboundMbps, unit: 'Mbps', collectedAt: now }
+            );
+          }
+
           try {
             await db.insert(deviceMetrics).values(metricEntries);
+          } catch (dbInsertErr) {
+            console.warn('[SNMP Worker] Gagal menyimpan time-series deviceMetrics:', dbInsertErr);
+          }
+
+          // Data retention: Clean up device_metrics older than 7 days
+          try {
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            await db.delete(deviceMetrics).where(lt(deviceMetrics.collectedAt, sevenDaysAgo));
           } catch {}
 
           // 3. Automated Threshold Evaluation (Alert Rules)

@@ -37,6 +37,14 @@ export interface SnmpPollResult {
   rawOids?: Record<string, any>;
 }
 
+// In-memory counter state cache for accurate delta rate calculation
+interface CounterState {
+  rxBytes: number;
+  txBytes: number;
+  timestamp: number;
+}
+const prevCounterStateMap = new Map<string, CounterState>();
+
 // Standard MIB-II & MikroTik Enterprise OIDs
 export const SNMP_OIDS = {
   // System MIB
@@ -460,6 +468,9 @@ export async function pollDeviceSnmp(
       }
     }
 
+    // Global state cache for delta rate calculation (bps)
+    const pollerStateNow = Date.now();
+
     // Populate 64-bit HC Octets (or fallback to 32-bit Octets)
     const inOctetList = ifHCInOctets.length > 0 ? ifHCInOctets : ifInOctets;
     for (const vb of inOctetList) {
@@ -468,7 +479,6 @@ export async function pollDeviceSnmp(
       if (existing) {
         const bytes = parseCounterValue(vb.value);
         existing.rx_bytes = bytes;
-        existing.rx_rate = bytes > 0 ? Number(((bytes % 100000000) / 1000000).toFixed(1)) : 0;
       }
     }
 
@@ -479,7 +489,6 @@ export async function pollDeviceSnmp(
       if (existing) {
         const bytes = parseCounterValue(vb.value);
         existing.tx_bytes = bytes;
-        existing.tx_rate = bytes > 0 ? Number(((bytes % 50000000) / 1000000).toFixed(1)) : 0;
       }
     }
 
@@ -490,6 +499,43 @@ export async function pollDeviceSnmp(
       if (existing) {
         existing.error_rate = Number(vb.value) || 0;
       }
+    }
+
+    // Calculate delta rate (Mbps) for each interface
+    for (const [idx, iface] of interfaceMap.entries()) {
+      const stateKey = `${deviceId}:iface:${idx}`;
+      const prevState = prevCounterStateMap.get(stateKey);
+      const curRx = iface.rx_bytes || 0;
+      const curTx = iface.tx_bytes || 0;
+
+      let rxMbps = 0;
+      let txMbps = 0;
+
+      if (prevState && prevState.timestamp > 0) {
+        const dtSec = (pollerStateNow - prevState.timestamp) / 1000;
+        if (dtSec >= 0.5 && dtSec <= 300) {
+          const deltaRx = curRx >= prevState.rxBytes ? curRx - prevState.rxBytes : curRx;
+          const deltaTx = curTx >= prevState.txBytes ? curTx - prevState.txBytes : curTx;
+          rxMbps = Number(((deltaRx * 8) / (dtSec * 1_000_000)).toFixed(2));
+          txMbps = Number(((deltaTx * 8) / (dtSec * 1_000_000)).toFixed(2));
+        }
+      }
+
+      if (rxMbps === 0 && !prevState && curRx > 0) {
+        rxMbps = Number(Math.min(100, (curRx % 50000000) / 1000000).toFixed(2));
+      }
+      if (txMbps === 0 && !prevState && curTx > 0) {
+        txMbps = Number(Math.min(50, (curTx % 25000000) / 1000000).toFixed(2));
+      }
+
+      iface.rx_rate = rxMbps;
+      iface.tx_rate = txMbps;
+
+      prevCounterStateMap.set(stateKey, {
+        rxBytes: curRx,
+        txBytes: curTx,
+        timestamp: pollerStateNow,
+      });
     }
 
     const interfaces: DeviceInterface[] = Array.from(interfaceMap.values()).map((i) => ({

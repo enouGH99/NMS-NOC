@@ -6,6 +6,7 @@ import {
   integer,
   doublePrecision,
   json,
+  index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -184,12 +185,15 @@ export const vpnTunnels = pgTable('vpn_tunnels', {
 export const deviceMetrics = pgTable('device_metrics', {
   id: text('id').primaryKey(),
   deviceId: text('device_id').notNull().references(() => devices.id, { onDelete: 'cascade' }),
-  metricName: text('metric_name').notNull(), // 'latency' | 'cpu_usage' | 'throughput' | 'ram_usage'
+  metricName: text('metric_name').notNull(), // 'latency' | 'cpu_usage' | 'throughput_in' | 'throughput_out' | 'wan_throughput_in' | 'wan_throughput_out' | 'ram_usage' | 'temperature'
   metricLabel: text('metric_label'),
   value: doublePrecision('value').notNull(),
   unit: text('unit').notNull(), // 'ms' | '%' | 'Mbps' | 'bytes'
   collectedAt: timestamp('collected_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('idx_device_metrics_lookup').on(table.deviceId, table.metricName, table.collectedAt),
+  index('idx_device_metrics_time').on(table.collectedAt),
+]);
 
 export const rawSnmpMetrics = pgTable('raw_snmp_metrics', {
   id: text('id').primaryKey(),
