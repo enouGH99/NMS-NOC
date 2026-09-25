@@ -104,7 +104,10 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
           x={sourceCoords.x + (targetCoords.x - sourceCoords.x) * 0.15}
           y={sourceCoords.y + (targetCoords.y - sourceCoords.y) * 0.15 - 8}
           textAnchor="middle"
-          className="text-[9px] font-mono fill-m3-on-surface-variant/80 select-none font-bold"
+          fontSize="10"
+          fontWeight="bold"
+          fontFamily="monospace"
+          fill="#94a3b8"
         >
           {sourcePort}
         </text>
@@ -115,7 +118,10 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
           x={targetCoords.x - (targetCoords.x - sourceCoords.x) * 0.15}
           y={targetCoords.y - (targetCoords.y - sourceCoords.y) * 0.15 - 8}
           textAnchor="middle"
-          className="text-[9px] font-mono fill-m3-on-surface-variant/80 select-none font-bold"
+          fontSize="10"
+          fontWeight="bold"
+          fontFamily="monospace"
+          fill="#94a3b8"
         >
           {targetPort}
         </text>
@@ -126,26 +132,36 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
         <g transform={`translate(${midX}, ${midY})`} className="cursor-default pointer-events-none">
           {/* Badge Background Pill */}
           <rect
-            x="-42"
-            y="-10"
-            width="84"
-            height="20"
-            rx="10"
-            fill="currentColor"
-            className="text-m3-surface-container-high/95 dark:text-m3-surface-container-highest/95 stroke-m3-outline-variant/40"
-            strokeWidth="1"
-            filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.15))"
+            x="-48"
+            y="-11"
+            width="96"
+            height="22"
+            rx="11"
+            fill="#0f172a"
+            stroke={isWarning ? '#f59e0b' : '#334155'}
+            strokeWidth="1.2"
+          />
+
+          {/* Activity Dot */}
+          <circle
+            cx="-36"
+            cy="0"
+            r="3"
+            fill={isWarning ? '#f59e0b' : '#10b981'}
           />
 
           {/* Traffic Text */}
           <text
-            x="0"
+            x="-28"
             y="3.5"
-            textAnchor="middle"
-            className="text-[9px] font-mono font-bold fill-m3-on-surface"
+            textAnchor="start"
+            fontSize="10"
+            fontWeight="bold"
+            fontFamily="monospace"
+            fill="#f8fafc"
           >
             {inboundMbps > 0 || outboundMbps > 0
-              ? `${formatMbps(inboundMbps)}`
+              ? `${formatMbps(inboundMbps || outboundMbps)}`
               : 'Link Active'}
           </text>
         </g>
@@ -155,19 +171,23 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
       {isDown && (
         <g transform={`translate(${midX}, ${midY})`} className="cursor-default pointer-events-none">
           <rect
-            x="-30"
+            x="-36"
             y="-9"
-            width="60"
+            width="72"
             height="18"
             rx="9"
-            className="fill-rose-900/90 stroke-rose-500/60"
+            fill="#881337"
+            stroke="#f43f5e"
             strokeWidth="1"
           />
           <text
             x="0"
             y="3.5"
             textAnchor="middle"
-            className="text-[8px] font-mono font-bold fill-rose-200"
+            fontSize="9"
+            fontWeight="bold"
+            fontFamily="monospace"
+            fill="#fecdd3"
           >
             DISCONNECTED
           </text>
