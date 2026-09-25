@@ -132,9 +132,9 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
         <g transform={`translate(${midX}, ${midY})`} className="cursor-default pointer-events-none">
           {/* Badge Background Pill */}
           <rect
-            x="-48"
+            x="-58"
             y="-11"
-            width="96"
+            width="116"
             height="22"
             rx="11"
             fill="#0f172a"
@@ -144,7 +144,7 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
 
           {/* Activity Dot */}
           <circle
-            cx="-36"
+            cx="-46"
             cy="0"
             r="3"
             fill={isWarning ? '#f59e0b' : '#10b981'}
@@ -152,16 +152,18 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
 
           {/* Traffic Text */}
           <text
-            x="-28"
+            x="-38"
             y="3.5"
             textAnchor="start"
-            fontSize="10"
+            fontSize="9.5"
             fontWeight="bold"
             fontFamily="monospace"
             fill="#f8fafc"
           >
             {inboundMbps > 0 || outboundMbps > 0
-              ? `${formatMbps(inboundMbps || outboundMbps)}`
+              ? inboundMbps >= 0.1 && outboundMbps >= 0.1
+                ? `↓${formatMbps(inboundMbps, 1)} ↑${formatMbps(outboundMbps, 1)}`
+                : `${formatMbps(Math.max(inboundMbps, outboundMbps), 1)}`
               : 'Link Active'}
           </text>
         </g>

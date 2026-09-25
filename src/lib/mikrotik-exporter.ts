@@ -6,7 +6,7 @@
 
 import snmp from 'net-snmp';
 import { db } from '@/db';
-import { rawSnmpMetrics, devices } from '@/db/schema';
+import { rawSnmpMetrics, devices, deviceInterfaces } from '@/db/schema';
 import { eq, and, or } from 'drizzle-orm';
 import { RawMetricCategory, SnmpV3Config } from './types';
 
@@ -599,11 +599,18 @@ export async function exportMikrotikHexSMetrics(
     let wanInMbps = 0;
     let wanOutMbps = 0;
 
+    const interfaceRowsToPersist: any[] = [];
+
     ifNames.forEach(vb => {
       const idx = getIndex(vb.oid);
-      const name = (ifNameMap.get(idx) || '').toLowerCase();
+      const rawName = ifNameMap.get(idx) || `if-${idx}`;
+      const name = rawName.trim();
+      const lowerName = name.toLowerCase();
       const curRx = ifInBytesMap.get(idx) || 0;
       const curTx = ifOutBytesMap.get(idx) || 0;
+      const curOper = ifOperMap.get(idx) === 1 ? 'up' : 'down';
+      const curMac = ifPhysMap.get(idx) || '00:00:00:00:00:00';
+      const curSpeed = ifSpeedMap.get(idx) || 1000;
       const stateKey = `${deviceId}:exp:${idx}`;
       const prevState = exporterCounterStateMap.get(stateKey);
 
@@ -633,7 +640,31 @@ export async function exportMikrotikHexSMetrics(
         timestamp: expTimeNow,
       });
 
-      const isWan = name.includes('ether1') || name.includes('wan') || name.includes('isp') || name.includes('sfp1');
+      const ifType = (lowerName.startsWith('<ovpn-') || lowerName.includes('openvpn')) ? 'ovpn'
+        : (lowerName.startsWith('<pptp-') || lowerName.includes('pptp')) ? 'pptp'
+        : (lowerName.startsWith('<l2tp-') || lowerName.includes('l2tp')) ? 'l2tp'
+        : lowerName.includes('sfp') ? 'sfp'
+        : lowerName.includes('bridge') ? 'bridge'
+        : lowerName.includes('vlan') ? 'vlan'
+        : lowerName.includes('wlan') || lowerName.includes('wifi') ? 'wireless'
+        : 'ethernet';
+
+      interfaceRowsToPersist.push({
+        id: `if-${deviceId}-${idx}`,
+        deviceId,
+        name,
+        type: ifType,
+        status: curOper,
+        macAddress: curMac,
+        speedMbps: curSpeed >= 1000 ? curSpeed : 1000,
+        rxBytes: curRx,
+        txBytes: curTx,
+        rxErrors: 0,
+        txErrors: 0,
+        updatedAt: now,
+      });
+
+      const isWan = lowerName.includes('ether1') || lowerName.includes('wan') || lowerName.includes('isp') || lowerName.includes('sfp1');
       if (isWan) {
         wanInMbps += rxMbps;
         wanOutMbps += txMbps;
@@ -761,6 +792,16 @@ export async function exportMikrotikHexSMetrics(
           }));
 
           await db.insert(rawSnmpMetrics).values(chunk);
+        }
+
+        // Sync normalized device_interfaces table
+        try {
+          if (interfaceRowsToPersist.length > 0) {
+            await db.delete(deviceInterfaces).where(eq(deviceInterfaces.deviceId, deviceId));
+            await db.insert(deviceInterfaces).values(interfaceRowsToPersist);
+          }
+        } catch (ifErr) {
+          console.warn('[MikroTik Exporter] Failed to persist device interfaces:', ifErr);
         }
 
         // Update normalized devices table
