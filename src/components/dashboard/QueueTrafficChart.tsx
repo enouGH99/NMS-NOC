@@ -329,10 +329,10 @@ export const QueueTrafficChart: React.FC = () => {
         </div>
       ) : viewMode === 'table' ? (
         /* ================== QUEUE TREE HIERARCHY TABLE VIEW ================== */
-        <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest">
-          <div className="overflow-x-auto">
+        <div className="rounded-m3-2xl border border-m3-outline-variant/30 overflow-hidden bg-m3-surface-container-lowest shadow-2xs">
+          <div className="overflow-x-auto max-h-[460px] overflow-y-auto scrollbar-thin">
             <table className="w-full text-left text-xs min-w-[860px]">
-              <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider">
+              <thead className="bg-m3-surface-container-high text-m3-on-surface-variant uppercase text-[10px] font-bold tracking-wider sticky top-0 z-10 backdrop-blur-md shadow-xs">
                 <tr>
                   <th className="py-2.5 px-3 w-8 text-center">#</th>
                   <th className="py-2.5 px-3">Nama Antrean (Queue Tree)</th>
@@ -516,7 +516,7 @@ export const QueueTrafficChart: React.FC = () => {
         </div>
       ) : (
         /* ================== CARD VIEW WITH SPARKLINE ================== */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 overflow-y-auto pr-0.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1 scrollbar-thin">
           {filteredQueues.map((q, idx) => {
             const maxNum = parseInt(String(q.max_limit).replace(/[^0-9]/g, ''), 10) || 40;
             const currentDl = q.current_rate.download;

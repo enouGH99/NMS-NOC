@@ -197,7 +197,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Grid: Dynamically rendered based on widget preferences */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Row 1: Real-time Throughput Area Chart (2 cols) + ISP WAN Health (1 col) */}
         {dashboardWidgets.throughput_chart && (
           <div className={dashboardWidgets.wan_health ? 'lg:col-span-2' : 'lg:col-span-3'}>
