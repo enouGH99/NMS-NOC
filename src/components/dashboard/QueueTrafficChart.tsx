@@ -115,8 +115,15 @@ export const QueueTrafficChart: React.FC = () => {
     setEditingQueue(null);
   };
 
+  // Find root / core router (RB SUNDAYA)
+  const rootRouter = devices.find(d => d.type === 'router' || d.name.toLowerCase().includes('mikrotik') || d.name.toLowerCase().includes('sundaya')) || devices[0];
+  
+  // Filter queues to only include the main Core Router's queues (default 6 items)
+  const mainRouterQueues = rootRouter ? queues.filter(q => q.device_id === rootRouter.id) : queues;
+  const queuesToDisplay = mainRouterQueues.length > 0 ? mainRouterQueues : queues.slice(0, 6);
+
   // Build hierarchical multi-level queue tree
-  const hierarchicalQueues = buildQueueHierarchy(queues);
+  const hierarchicalQueues = buildQueueHierarchy(queuesToDisplay);
 
   // Filter queues by search query (matches name, parent, packet_mark)
   const filteredQueues = hierarchicalQueues.filter((q) => {

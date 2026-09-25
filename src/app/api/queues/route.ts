@@ -10,13 +10,16 @@ export async function GET(request: NextRequest) {
     const deviceId = searchParams.get('deviceId');
     const refresh = searchParams.get('refresh') === 'true';
 
+    const routerRows = await db.select().from(devices);
+    const targetRouter = deviceId 
+      ? routerRows.find(d => d.id === deviceId) 
+      : routerRows.find(d => d.type === 'router' || d.name.toLowerCase().includes('mikrotik') || d.name.toLowerCase().includes('sundaya')) || routerRows[0];
+
+    const targetDeviceId = deviceId || targetRouter?.id || 'dev-1';
+
     let rows: any[] = [];
     try {
-      if (deviceId) {
-        rows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, deviceId));
-      } else {
-        rows = await db.select().from(queueTraffics);
-      }
+      rows = await db.select().from(queueTraffics).where(eq(queueTraffics.deviceId, targetDeviceId));
 
       // Check if rows contain legacy simple queue records
       const hasLegacySimpleQueues = rows.length > 0 && rows.some((r: any) =>
@@ -31,14 +34,9 @@ export async function GET(request: NextRequest) {
       if (refresh || rows.length === 0 || hasLegacySimpleQueues) {
         if (hasLegacySimpleQueues) {
           try {
-            await db.delete(queueTraffics);
+            await db.delete(queueTraffics).where(eq(queueTraffics.deviceId, targetDeviceId));
           } catch {}
         }
-
-        const routerRows = await db.select().from(devices);
-        const targetRouter = deviceId 
-          ? routerRows.find(d => d.id === deviceId) 
-          : routerRows.find(d => d.type === 'router') || routerRows[0];
 
         if (targetRouter && targetRouter.ipAddress) {
           const { pollDeviceSnmp } = await import('@/lib/snmp-poller');
