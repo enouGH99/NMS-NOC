@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Radio,
+  Terminal,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -77,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Operasional & Analitik',
       items: [
+        { label: 'Log & Observability', href: '/logs', icon: Terminal },
         { label: 'Auto-Discovery & Topologi', href: '/topology', icon: Network },
         { label: 'Log Perbaikan', href: '/repairs', icon: Wrench },
         { label: 'Laporan SLA', href: '/reports', icon: FileBarChart },

@@ -242,3 +242,54 @@ export interface RawSnmpMetric {
   collected_at: string;
 }
 
+// ----------------------------------------------------
+// OBSERVABILITY & LOGS (Grafana Loki & Prometheus)
+// ----------------------------------------------------
+
+export type LogLevel = 'emerg' | 'alert' | 'crit' | 'error' | 'warn' | 'notice' | 'info' | 'debug';
+
+export interface LokiLogEntry {
+  id: string;
+  timestamp: string; // ISO 8601 or nanosecond string
+  timestampMs: number;
+  message: string;
+  level: LogLevel;
+  host?: string;
+  service?: string;
+  job?: string;
+  topic?: string;
+  stream: Record<string, string>;
+  raw?: string;
+}
+
+export interface LokiQueryResponse {
+  success: boolean;
+  totalLogs: number;
+  logs: LokiLogEntry[];
+  query: string;
+  source: 'loki_live' | 'loki_mock_fallback';
+  error?: string;
+}
+
+export interface PrometheusMetricSeries {
+  metricName: string;
+  labels: Record<string, string>;
+  dataPoints: { time: string; timestamp: number; value: number }[];
+}
+
+export interface PrometheusQueryResponse {
+  success: boolean;
+  query: string;
+  series: PrometheusMetricSeries[];
+  source: 'prometheus_live' | 'prometheus_mock_fallback';
+  error?: string;
+}
+
+export interface ObservabilityHealth {
+  loki: { available: boolean; url: string; latencyMs: number; error?: string };
+  prometheus: { available: boolean; url: string; latencyMs: number; error?: string };
+  grafana: { available: boolean; url: string; latencyMs: number; error?: string };
+  timestamp: string;
+}
+
+
