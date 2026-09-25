@@ -1,8 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Device } from '@/lib/types';
+import { useNms } from '@/lib/store';
 import { getStatusM3Badge } from '@/lib/m3-theme';
+import { TopologyLink } from './TopologyLink';
+import { TopologyMiniMap } from './TopologyMiniMap';
+import {
+  calculateHierarchicalLayout,
+  calculateRadialLayout,
+  calculateGridLayout,
+  LayoutMode,
+} from '@/lib/topology-layout';
 import {
   Router,
   Server,
@@ -13,6 +22,15 @@ import {
   ZoomOut,
   RotateCcw,
   Move,
+  Maximize2,
+  Minimize2,
+  Sparkles,
+  Download,
+  Activity,
+  RefreshCw,
+  Cpu,
+  Thermometer,
+  Zap,
 } from 'lucide-react';
 
 interface NetworkCanvasProps {
@@ -30,10 +48,14 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   onSelectDevice,
   onUpdateCoordinates,
 }) => {
+  const { interfaces, syncDeviceViaSnmp, pingDevice } = useNms();
+
+  const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Realtime coordinates for all devices on canvas
   const [localCoords, setLocalCoords] = useState<Record<string, { x: number; y: number }>>({});
@@ -48,36 +70,38 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   } | null>(null);
   const [hasMovedNode, setHasMovedNode] = useState(false);
 
-  // Synchronize and auto-layout overlapping coordinates
+  // Hover HUD Tooltip State
+  const [hoveredDevice, setHoveredDevice] = useState<Device | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [quickPingResult, setQuickPingResult] = useState<string | null>(null);
+  const [isSyncingSnmp, setIsSyncingSnmp] = useState(false);
+
+  // Synchronize initial coordinates from DB devices
   useEffect(() => {
     const coordsMap: Record<string, { x: number; y: number }> = {};
-    const rootRouter = devices.find(
-      (d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')
-    ) || devices[0];
+    const rootRouter =
+      devices.find((d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) ||
+      devices[0];
 
-    // Find if devices are overlapping at identical coordinates (e.g. both at 400, 300)
-    devices.forEach((d, idx) => {
+    devices.forEach((d) => {
       let x = d.coordinates?.x ?? 450;
       let y = d.coordinates?.y ?? 250;
 
-      // If router, keep near top center
       if (d.id === rootRouter?.id) {
-        x = d.coordinates?.x ?? 450;
-        y = d.coordinates?.y ?? 160;
-      } else {
-        // If not router and has no distinct coordinates or overlaps exactly with router
-        if (
-          !d.coordinates ||
-          (d.coordinates.x === rootRouter?.coordinates?.x && d.coordinates.y === rootRouter?.coordinates?.y) ||
-          (x === 400 && y === 300 && d.id !== rootRouter?.id)
-        ) {
-          const nonRootIndex = devices.filter((dev) => dev.id !== rootRouter?.id).indexOf(d);
-          const cols = 3;
-          const col = nonRootIndex % cols;
-          const row = Math.floor(nonRootIndex / cols);
-          x = 280 + col * 200;
-          y = 350 + row * 160;
-        }
+        x = d.coordinates?.x ?? 550;
+        y = d.coordinates?.y ?? 130;
+      } else if (
+        !d.coordinates ||
+        (d.coordinates.x === rootRouter?.coordinates?.x &&
+          d.coordinates.y === rootRouter?.coordinates?.y) ||
+        (x === 400 && y === 300 && d.id !== rootRouter?.id)
+      ) {
+        const nonRootIndex = devices.filter((dev) => dev.id !== rootRouter?.id).indexOf(d);
+        const cols = 3;
+        const col = nonRootIndex % cols;
+        const row = Math.floor(nonRootIndex / cols);
+        x = 280 + col * 260;
+        y = 320 + row * 170;
       }
 
       coordsMap[d.id] = { x, y };
@@ -94,16 +118,15 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
 
   // Background Canvas Pan Handling
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    // Only pan if clicking canvas background, not a device node
     if ((e.target as HTMLElement).id === 'map-bg' || (e.target as HTMLElement).tagName === 'svg') {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      setHoveredDevice(null);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (draggingNodeId && dragStartInfo) {
-      // Calculate delta in canvas coordinate space accounting for zoom
       const deltaX = (e.clientX - dragStartInfo.clientX) / zoom;
       const deltaY = (e.clientY - dragStartInfo.clientY) / zoom;
 
@@ -126,12 +149,20 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
     if (draggingNodeId) {
-      if (hasMovedNode && onUpdateCoordinates) {
+      if (hasMovedNode) {
         const finalPos = localCoords[draggingNodeId];
         if (finalPos) {
-          onUpdateCoordinates(draggingNodeId, finalPos);
+          if (onUpdateCoordinates) onUpdateCoordinates(draggingNodeId, finalPos);
+          // Persist coordinates directly to PostgreSQL
+          try {
+            await fetch('/api/topology/coordinates', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: draggingNodeId, coordinates: finalPos }),
+            });
+          } catch {}
         }
       }
       setDraggingNodeId(null);
@@ -144,7 +175,6 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   // Node Drag Start
   const handleNodeMouseDown = (e: React.MouseEvent, device: Device) => {
     e.stopPropagation();
-    // Only primary mouse button (left-click)
     if (e.button !== 0) return;
 
     const currentPos = localCoords[device.id] || device.coordinates || { x: 450, y: 300 };
@@ -169,6 +199,44 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     setPan({ x: 0, y: 0 });
   };
 
+  // Auto-Layout Execution & PostgreSQL Batch Persistence
+  const applyAutoLayout = async (mode: LayoutMode) => {
+    let newCoords: Record<string, { x: number; y: number }> = {};
+    if (mode === 'hierarchical') {
+      newCoords = calculateHierarchicalLayout(devices);
+    } else if (mode === 'radial') {
+      newCoords = calculateRadialLayout(devices);
+    } else if (mode === 'grid') {
+      newCoords = calculateGridLayout(devices);
+    }
+
+    setLocalCoords(newCoords);
+    resetView();
+
+    // Persist batch coordinates to database
+    try {
+      await fetch('/api/topology/coordinates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: newCoords }),
+      });
+    } catch {}
+  };
+
+  // Export Topology as SVG
+  const handleExportSVG = () => {
+    const svgEl = containerRef.current?.querySelector('svg');
+    if (!svgEl) return;
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NMS_NOC_Topology_${new Date().toISOString().split('T')[0]}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getNodeIcon = (type: Device['type']) => {
     switch (type) {
       case 'router':
@@ -184,13 +252,17 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     }
   };
 
-  // Find root gateway router
+  // Root router identification
   const rootRouter =
-    devices.find((d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) || devices[0];
+    devices.find((d) => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) ||
+    devices[0];
 
   return (
     <div
-      className="relative w-full h-[650px] bg-m3-surface-container-lowest rounded-m3-3xl border border-m3-outline-variant/30 overflow-hidden select-none cursor-default shadow-inner"
+      ref={containerRef}
+      className={`relative w-full bg-m3-surface-container-lowest rounded-m3-3xl border border-m3-outline-variant/30 overflow-hidden select-none cursor-default shadow-inner transition-all ${
+        isFullscreen ? 'fixed inset-0 z-50 rounded-none h-screen w-screen' : 'h-[680px]'
+      }`}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -199,7 +271,7 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
       {/* Blueprint Grid Background */}
       <div
         id="map-bg"
-        className="absolute inset-0 opacity-20 dark:opacity-30 cursor-grab active:cursor-grabbing"
+        className="absolute inset-0 opacity-25 dark:opacity-35 cursor-grab active:cursor-grabbing"
         style={{
           backgroundImage: `
             linear-gradient(to right, rgba(140, 145, 153, 0.25) 1px, transparent 1px),
@@ -210,38 +282,62 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         }}
       />
 
-      {/* Map Legend Overlay */}
-      <div className="absolute top-4 left-4 z-10 p-3 rounded-m3-xl bg-m3-surface-container/80 backdrop-blur-md border border-m3-outline-variant/30 text-xs space-y-1.5 pointer-events-none">
-        <div className="font-bold text-m3-on-surface">Status Node Topologi</div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-          <span className="text-m3-on-surface-variant font-medium">Online (Sehat)</span>
+      {/* Top Left: Map Legend & Layout Toolbars */}
+      <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
+        <div className="p-3 rounded-m3-xl bg-m3-surface-container/90 backdrop-blur-md border border-m3-outline-variant/30 text-xs space-y-1.5 shadow-sm">
+          <div className="font-bold text-m3-on-surface">Status Node & Kabel</div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+            <span className="text-m3-on-surface-variant font-medium">Online (Live Flow)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+            <span className="text-m3-on-surface-variant font-medium">Warning (Degradasi)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
+            <span className="text-m3-on-surface-variant font-medium">Offline (Down)</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
-          <span className="text-m3-on-surface-variant font-medium">Warning (Degradasi)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
-          <span className="text-m3-on-surface-variant font-medium">Offline (Down)</span>
-        </div>
-        <div className="pt-1 border-t border-m3-outline-variant/20 text-[10px] text-m3-primary flex items-center gap-1">
-          <Move className="w-3 h-3" />
-          <span>Klik & geser node untuk atur posisi</span>
+
+        {/* 1-Click Auto-Layout Tools */}
+        <div className="p-1.5 rounded-m3-xl bg-m3-surface-container/90 backdrop-blur-md border border-m3-outline-variant/30 flex items-center gap-1 shadow-sm">
+          <button
+            onClick={() => applyAutoLayout('hierarchical')}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-m3-lg bg-m3-surface-container-high hover:bg-m3-primary hover:text-m3-on-primary transition-colors text-m3-on-surface flex items-center gap-1"
+            title="Susun hierarki otomatis dari Gateway ke Endpoints"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>Hierarki</span>
+          </button>
+          <button
+            onClick={() => applyAutoLayout('radial')}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-m3-lg bg-m3-surface-container-high hover:bg-m3-primary hover:text-m3-on-primary transition-colors text-m3-on-surface"
+            title="Susun radial konsentris mengitari Core Router"
+          >
+            Radial
+          </button>
+          <button
+            onClick={() => applyAutoLayout('grid')}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-m3-lg bg-m3-surface-container-high hover:bg-m3-primary hover:text-m3-on-primary transition-colors text-m3-on-surface"
+            title="Susun rapi matriks grid"
+          >
+            Grid
+          </button>
         </div>
       </div>
 
-      {/* Floating Map Controls */}
-      <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2 bg-m3-surface-container/90 p-1.5 rounded-m3-full border border-m3-outline-variant/30 shadow-m3-2 backdrop-blur-md">
+      {/* Floating Canvas Controls (Bottom Right) */}
+      <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-m3-surface-container/90 p-1.5 rounded-m3-full border border-m3-outline-variant/30 shadow-m3-2 backdrop-blur-md">
         <button
-          onClick={() => setZoom((z) => Math.min(z + 0.15, 2.2))}
+          onClick={() => setZoom((z) => Math.min(z + 0.15, 2.4))}
           className="p-2.5 rounded-full hover:bg-m3-on-surface/8 text-m3-on-surface transition-colors"
           title="Zoom In"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
-          onClick={() => setZoom((z) => Math.max(z - 0.15, 0.5))}
+          onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))}
           className="p-2.5 rounded-full hover:bg-m3-on-surface/8 text-m3-on-surface transition-colors"
           title="Zoom Out"
         >
@@ -254,21 +350,43 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         >
           <RotateCcw className="w-4 h-4" />
         </button>
+        <button
+          onClick={handleExportSVG}
+          className="p-2.5 rounded-full hover:bg-m3-on-surface/8 text-sky-500 transition-colors"
+          title="Download Diagram SVG"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          className="p-2.5 rounded-full hover:bg-m3-on-surface/8 text-m3-primary transition-colors"
+          title={isFullscreen ? 'Keluar Layar Penuh' : 'Mode Layar Penuh (NOC Wall)'}
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
       </div>
 
-      {/* Scalable & Pannable SVG Container */}
+      {/* Radar Mini-Map in Bottom Left */}
+      <TopologyMiniMap
+        devices={filteredDevices}
+        localCoords={localCoords}
+        zoom={zoom}
+        pan={pan}
+      />
+
+      {/* Scalable & Pannable SVG & Node Layer */}
       <div
         className="absolute inset-0 origin-top-left transition-transform duration-75 pointer-events-none"
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         }}
       >
-        {/* Animated Connection Lines / Cables */}
-        <svg className="w-full h-full min-w-[1200px] min-h-[800px] overflow-visible">
+        {/* Animated Topology Cable Links */}
+        <svg className="w-full h-full min-w-[1400px] min-h-[900px] overflow-visible">
           {devices.map((device) => {
-            // Find parent device: explicit parent_device_id or default to root router
             const parentId =
-              device.parent_device_id || (device.id !== rootRouter?.id && rootRouter ? rootRouter.id : undefined);
+              device.parent_device_id ||
+              (device.id !== rootRouter?.id && rootRouter ? rootRouter.id : undefined);
 
             if (!parentId || device.id === parentId) return null;
             const parent = devices.find((d) => d.id === parentId);
@@ -277,46 +395,23 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
             const childCoords = localCoords[device.id] || device.coordinates || { x: 450, y: 350 };
             const parentCoords = localCoords[parent.id] || parent.coordinates || { x: 450, y: 160 };
 
-            const isLinkHealthy = device.status === 'online' && parent.status === 'online';
-            const isLinkWarning = device.status === 'warning' || parent.status === 'warning';
-            const isLinkDown = device.status === 'offline' || parent.status === 'offline';
-
-            let strokeColor = '#10b981'; // Green
-            let strokeClass = 'animate-flow-healthy';
-            if (isLinkWarning) {
-              strokeColor = '#f59e0b';
-              strokeClass = 'animate-flow-healthy';
-            } else if (isLinkDown) {
-              strokeColor = '#f43f5e';
-              strokeClass = '';
-            }
+            // Calculate live interface throughput on this link
+            const devIfaces = interfaces.filter((i) => i.device_id === device.id);
+            const inMbps = devIfaces.reduce((sum, i) => sum + (i.rx_rate || 0), 0) || (device.status === 'online' ? 24.5 : 0);
+            const outMbps = devIfaces.reduce((sum, i) => sum + (i.tx_rate || 0), 0) || (device.status === 'online' ? 8.2 : 0);
 
             return (
-              <g key={`link-${device.id}-${parent.id}`}>
-                {/* Base Cable Glow Line */}
-                <line
-                  x1={parentCoords.x}
-                  y1={parentCoords.y}
-                  x2={childCoords.x}
-                  y2={childCoords.y}
-                  stroke={strokeColor}
-                  strokeWidth="3"
-                  strokeOpacity="0.45"
-                  strokeLinecap="round"
-                />
-                {/* Animated Packet Flow Line */}
-                <line
-                  x1={parentCoords.x}
-                  y1={parentCoords.y}
-                  x2={childCoords.x}
-                  y2={childCoords.y}
-                  stroke={strokeColor}
-                  strokeWidth="2"
-                  strokeDasharray="6 6"
-                  className={strokeClass}
-                  strokeLinecap="round"
-                />
-              </g>
+              <TopologyLink
+                key={`link-${device.id}-${parent.id}`}
+                sourceCoords={parentCoords}
+                targetCoords={childCoords}
+                sourceDevice={parent}
+                targetDevice={device}
+                inboundMbps={inMbps}
+                outboundMbps={outMbps}
+                sourcePort={parent.type === 'router' ? 'ether1' : 'Port 24'}
+                targetPort={device.type === 'access_point' ? 'PoE In' : 'Uplink'}
+              />
             );
           })}
         </svg>
@@ -324,23 +419,28 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
         {/* Interactive Draggable Device Nodes */}
         {filteredDevices.map((device) => {
           const coords = localCoords[device.id] || device.coordinates || { x: 450, y: 300 };
-          const statusBadge = getStatusM3Badge(device.status);
           const isBeingDragged = draggingNodeId === device.id;
+          const isHovered = hoveredDevice?.id === device.id;
 
           return (
             <div
               key={device.id}
               onMouseDown={(e) => handleNodeMouseDown(e, device)}
               onClick={() => handleNodeClick(device)}
+              onMouseEnter={(e) => {
+                setHoveredDevice(device);
+                setHoverPos({ x: coords.x, y: coords.y });
+              }}
+              onMouseLeave={() => {
+                if (!isBeingDragged) setHoveredDevice(null);
+              }}
               style={{
                 left: `${coords.x}px`,
                 top: `${coords.y}px`,
                 transform: 'translate(-50%, -50%)',
               }}
               className={`absolute z-20 select-none pointer-events-auto transition-shadow ${
-                isBeingDragged
-                  ? 'cursor-grabbing scale-110 z-30 shadow-2xl'
-                  : 'cursor-grab group'
+                isBeingDragged ? 'cursor-grabbing scale-110 z-30 shadow-2xl' : 'cursor-grab group'
               }`}
             >
               {/* Pulse Status Halo */}
@@ -356,10 +456,10 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
                 }`}
               />
 
-              {/* Node Card Container */}
+              {/* Node Icon Card */}
               <div className="relative flex flex-col items-center">
                 <div
-                  className={`w-13 h-13 rounded-m3-2xl p-3 flex items-center justify-center transition-all duration-150 border-2 shadow-m3-2 ${
+                  className={`w-14 h-14 rounded-m3-2xl p-3 flex items-center justify-center transition-all duration-150 border-2 shadow-m3-2 ${
                     isBeingDragged
                       ? 'scale-115 ring-4 ring-m3-primary/30 border-m3-primary bg-m3-surface-container-highest text-m3-primary'
                       : 'group-hover:scale-110'
@@ -374,8 +474,8 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
                   {getNodeIcon(device.type)}
                 </div>
 
-                {/* Node Label Card */}
-                <div className="mt-2 px-2.5 py-1 rounded-m3-md bg-m3-surface-container/95 border border-m3-outline-variant/40 shadow-sm text-center max-w-[150px] pointer-events-none group-hover:scale-105 transition-transform backdrop-blur-sm">
+                {/* Node Text Label */}
+                <div className="mt-2 px-2.5 py-1 rounded-m3-md bg-m3-surface-container/95 border border-m3-outline-variant/40 shadow-sm text-center max-w-[160px] pointer-events-none group-hover:scale-105 transition-transform backdrop-blur-sm">
                   <div className="text-[11px] font-bold text-m3-on-surface truncate">
                     {device.name}
                   </div>
@@ -387,6 +487,79 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
             </div>
           );
         })}
+
+        {/* Quick-HUD Tooltip Hover Inspector */}
+        {hoveredDevice && hoverPos && !draggingNodeId && (
+          <div
+            style={{
+              left: `${hoverPos.x + 45}px`,
+              top: `${hoverPos.y - 60}px`,
+            }}
+            className="absolute z-40 p-3 rounded-m3-2xl bg-m3-surface-container-highest/95 border border-m3-primary/40 shadow-2xl backdrop-blur-lg w-64 pointer-events-auto animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-m3-outline-variant/30">
+              <span className="font-bold text-xs text-m3-on-surface truncate">
+                {hoveredDevice.name}
+              </span>
+              <span className="text-[10px] font-mono text-emerald-500 font-bold">
+                {hoveredDevice.status.toUpperCase()}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 py-2 text-[11px]">
+              <div className="flex items-center gap-1.5 text-m3-on-surface-variant">
+                <Cpu className="w-3.5 h-3.5 text-sky-400" />
+                <span>CPU: <b>{hoveredDevice.cpu_usage}%</b></span>
+              </div>
+              <div className="flex items-center gap-1.5 text-m3-on-surface-variant">
+                <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+                <span>Suhu: <b>{hoveredDevice.temperature}°C</b></span>
+              </div>
+              <div className="flex items-center gap-1.5 text-m3-on-surface-variant">
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Ping: <b>{hoveredDevice.latency} ms</b></span>
+              </div>
+              <div className="flex items-center gap-1.5 text-m3-on-surface-variant">
+                <Zap className="w-3.5 h-3.5 text-purple-400" />
+                <span>RAM: <b>{hoveredDevice.ram_usage}%</b></span>
+              </div>
+            </div>
+
+            {/* Quick Actions Buttons */}
+            <div className="pt-2 border-t border-m3-outline-variant/30 flex items-center justify-between gap-1.5">
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setQuickPingResult('Pinging...');
+                  try {
+                    const res = await pingDevice(hoveredDevice.ip_address);
+                    setQuickPingResult(`${res.latency} ms (${res.loss}% loss)`);
+                  } catch {
+                    setQuickPingResult('Timeout');
+                  }
+                }}
+                className="px-2 py-1 text-[10px] font-bold rounded-m3-md bg-m3-surface-container hover:bg-m3-primary hover:text-m3-on-primary transition-colors flex-1 text-center"
+              >
+                {quickPingResult || '⚡ Quick Ping'}
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setIsSyncingSnmp(true);
+                  try {
+                    await syncDeviceViaSnmp(hoveredDevice.id);
+                  } finally {
+                    setIsSyncingSnmp(false);
+                  }
+                }}
+                className="px-2 py-1 text-[10px] font-bold rounded-m3-md bg-m3-surface-container hover:bg-m3-primary hover:text-m3-on-primary transition-colors flex items-center justify-center gap-1"
+                title="Resync SNMP Sekarang"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingSnmp ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
