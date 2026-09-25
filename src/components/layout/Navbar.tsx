@@ -73,8 +73,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
 
   const activeAlerts = alerts.filter((a) => !a.resolved_at);
   const latestThroughput = throughputHistory[throughputHistory.length - 1] || {
-    inbound: 45.2,
-    outbound: 18.7,
+    inbound: 27.9,
+    outbound: 3.8,
   };
 
   // Close profile dropdown when clicking outside
@@ -119,8 +119,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
           </button>
         </div>
 
-        {/* Center: Live Throughput Ticker (Desktop Widescreen) */}
-        <div className="hidden xl:flex items-center gap-3 px-3 py-1.5 rounded-m3-full bg-m3-surface-container-low border border-m3-outline-variant/30 text-xs font-mono">
+        {/* Center: Live WAN Throughput Ticker (Desktop Widescreen) */}
+        <div
+          title="Trafik Internet WAN MikroTik (ether1)"
+          className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 rounded-m3-full bg-m3-surface-container-low border border-m3-outline-variant/30 text-xs font-mono"
+        >
+          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-m3-primary/15 text-m3-primary font-sans uppercase">
+            WAN ether1
+          </span>
           <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
             <ArrowDown className="w-3.5 h-3.5" />
             <span>↓ {formatMbps(latestThroughput.inbound)}</span>

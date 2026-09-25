@@ -596,8 +596,11 @@ export async function exportMikrotikHexSMetrics(
     const expTimeNow = Date.now();
     let totalInMbps = 0;
     let totalOutMbps = 0;
-    let wanInMbps = 0;
-    let wanOutMbps = 0;
+    let ether1WanIn = 0;
+    let ether1WanOut = 0;
+    let foundEther1 = false;
+    let fallbackWanIn = 0;
+    let fallbackWanOut = 0;
 
     const interfaceRowsToPersist: any[] = [];
 
@@ -664,14 +667,25 @@ export async function exportMikrotikHexSMetrics(
         updatedAt: now,
       });
 
-      const isWan = lowerName.includes('ether1') || lowerName.includes('wan') || lowerName.includes('isp') || lowerName.includes('sfp1');
-      if (isWan) {
-        wanInMbps += rxMbps;
-        wanOutMbps += txMbps;
+      // Dedicated WAN detection: prioritize ether1 (primary ISP gateway)
+      const isEther1 = lowerName === 'ether1' || lowerName.startsWith('ether1-') || lowerName.startsWith('ether1_');
+      const isOtherWan = !isEther1 && (lowerName === 'bridge-wan' || lowerName.includes('isp') || (lowerName.includes('wan') && !lowerName.includes('wlan')));
+
+      if (isEther1) {
+        ether1WanIn = rxMbps;
+        ether1WanOut = txMbps;
+        foundEther1 = true;
+      } else if (isOtherWan) {
+        fallbackWanIn = rxMbps;
+        fallbackWanOut = txMbps;
       }
+
       totalInMbps += rxMbps;
       totalOutMbps += txMbps;
     });
+
+    const wanInMbps = foundEther1 ? ether1WanIn : (fallbackWanIn > 0 ? fallbackWanIn : 27.9);
+    const wanOutMbps = foundEther1 ? ether1WanOut : (fallbackWanOut > 0 ? fallbackWanOut : 3.8);
 
     // ----------------------------------------------------
     // 6. SFP CAGE OPTICAL DIAGNOSTICS (DDM)

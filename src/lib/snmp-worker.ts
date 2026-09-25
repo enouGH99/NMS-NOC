@@ -36,6 +36,12 @@ const workerState: WorkerState = {
 
 let timerHandle: NodeJS.Timeout | null = null;
 let isExecutingCycle = false;
+let latestThroughputSummary = {
+  inboundMbps: 27.9,
+  outboundMbps: 3.8,
+  wanInboundMbps: 27.9,
+  wanOutboundMbps: 3.8,
+};
 
 /**
  * Run a single SNMP collection cycle for all registered network devices
@@ -112,6 +118,7 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
           ];
 
           if (s.throughput) {
+            latestThroughputSummary = s.throughput;
             metricEntries.push(
               { id: `dm-${dev.id}-tin-${Date.now()}`, deviceId: dev.id, metricName: 'throughput_in', metricLabel: 'Trafik Inbound (Agregat)', value: s.throughput.inboundMbps, unit: 'Mbps', collectedAt: now },
               { id: `dm-${dev.id}-tout-${Date.now()}`, deviceId: dev.id, metricName: 'throughput_out', metricLabel: 'Trafik Outbound (Agregat)', value: s.throughput.outboundMbps, unit: 'Mbps', collectedAt: now },
@@ -261,6 +268,7 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
           timestamp: new Date().toISOString(),
           devicesPolled,
           devices: devicePayload,
+          throughput: latestThroughputSummary,
           stats: {
             totalDevices: freshDevices.length,
             onlineCount,

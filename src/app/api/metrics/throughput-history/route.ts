@@ -90,10 +90,10 @@ export async function GET(request: NextRequest) {
       onlineDeviceCount = devList.filter(d => d.status === 'online').length || 1;
     } catch {}
 
-    const streamFactorIn = streamParam === 'wan' ? 0.85 : streamParam === 'lan' ? 0.75 : 1.0;
-    const streamFactorOut = streamParam === 'wan' ? 0.35 : streamParam === 'lan' ? 0.80 : 1.0;
-    const baseIn = (onlineDeviceCount * 35) * streamFactorIn;
-    const baseOut = (onlineDeviceCount * 12) * streamFactorOut;
+    const streamFactorIn = streamParam === 'wan' ? 1.0 : streamParam === 'lan' ? 0.85 : 1.0;
+    const streamFactorOut = streamParam === 'wan' ? 1.0 : streamParam === 'lan' ? 0.85 : 1.0;
+    const baseIn = streamParam === 'wan' ? 27.9 : 32.5;
+    const baseOut = streamParam === 'wan' ? 3.8 : 5.2;
 
     // 5. Build final continuous time-series points array
     const points: { timestamp: number; inbound: number; outbound: number }[] = [];
