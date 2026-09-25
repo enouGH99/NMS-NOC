@@ -219,6 +219,36 @@ const statements = [
     "collected_at" timestamp DEFAULT now() NOT NULL
   );`,
 
+  `CREATE TABLE IF NOT EXISTS "device_metrics" (
+    "id" text PRIMARY KEY NOT NULL,
+    "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
+    "metric_name" text NOT NULL,
+    "metric_label" text,
+    "value" double precision NOT NULL,
+    "unit" text NOT NULL,
+    "collected_at" timestamp DEFAULT now() NOT NULL
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS "device_status_history" (
+    "id" text PRIMARY KEY NOT NULL,
+    "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
+    "status" text NOT NULL,
+    "checked_at" timestamp DEFAULT now() NOT NULL
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS "snmp_configs" (
+    "id" text PRIMARY KEY NOT NULL,
+    "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
+    "version" text DEFAULT 'v2c' NOT NULL,
+    "community" text DEFAULT 'public',
+    "username" text,
+    "auth_protocol" text,
+    "auth_key" text,
+    "privacy_protocol" text,
+    "privacy_key" text,
+    "updated_at" timestamp DEFAULT now() NOT NULL
+  );`,
+
   `CREATE INDEX IF NOT EXISTS "idx_raw_snmp_device_cat" ON "raw_snmp_metrics" ("device_id", "category");`,
   `CREATE INDEX IF NOT EXISTS "idx_raw_snmp_oid" ON "raw_snmp_metrics" ("device_id", "oid");`,
   `CREATE INDEX IF NOT EXISTS "idx_device_metrics_lookup" ON "device_metrics" ("device_id", "metric_name", "collected_at" DESC);`,

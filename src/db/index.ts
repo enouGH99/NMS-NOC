@@ -46,6 +46,15 @@ export { schema };
         "unit" text,
         "collected_at" timestamp DEFAULT now() NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS "device_metrics" (
+        "id" text PRIMARY KEY NOT NULL,
+        "device_id" text NOT NULL REFERENCES "devices"("id") ON DELETE cascade,
+        "metric_name" text NOT NULL,
+        "metric_label" text,
+        "value" double precision NOT NULL,
+        "unit" text NOT NULL,
+        "collected_at" timestamp DEFAULT now() NOT NULL
+      );
       CREATE INDEX IF NOT EXISTS "idx_raw_snmp_device_cat" ON "raw_snmp_metrics" ("device_id", "category");
       CREATE INDEX IF NOT EXISTS "idx_raw_snmp_oid" ON "raw_snmp_metrics" ("device_id", "oid");
       CREATE INDEX IF NOT EXISTS "idx_device_metrics_lookup" ON "device_metrics" ("device_id", "metric_name", "collected_at" DESC);

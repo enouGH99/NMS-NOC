@@ -192,7 +192,27 @@ function formatMac(raw: any): string {
   if (/^[0-9a-fA-F:.-]{12,17}$/.test(str)) {
     return str.replace(/[^0-9a-fA-F]/g, '').match(/.{1,2}/g)?.join(':').toUpperCase() || str;
   }
-  return str;
+  return str.replace(/\0/g, '');
+}
+
+// Helper: Safely parse 32-bit and 64-bit Counter / Integer Buffers
+function parseCounterValue(raw: any): number {
+  if (raw === undefined || raw === null) return 0;
+  if (Buffer.isBuffer(raw)) {
+    let val = BigInt(0);
+    for (let i = 0; i < raw.length; i++) {
+      val = (val << BigInt(8)) + BigInt(raw[i]);
+    }
+    return Number(val);
+  }
+  const n = Number(raw);
+  return isNaN(n) ? 0 : n;
+}
+
+// Helper: Sanitize string to remove PostgreSQL-invalid UTF8 null bytes (0x00)
+function sanitizeUtf8(str: any): string {
+  if (str === undefined || str === null) return '';
+  return String(str).replace(/\0/g, '').trim();
 }
 
 function snmpGetPromise(session: any, oids: string[]): Promise<any[]> {
@@ -326,12 +346,17 @@ export async function exportMikrotikHexSMetrics(
     if (Buffer.isBuffer(vb.value)) {
       if (type === 'hex_string') {
         rawStr = formatMac(vb.value);
+      } else if (type === 'counter64' || type === 'counter32' || type === 'integer' || type === 'gauge') {
+        rawStr = String(parseCounterValue(vb.value));
       } else {
-        rawStr = vb.value.toString('utf8').trim();
+        rawStr = vb.value.toString('utf8');
       }
     } else if (vb.value !== undefined && vb.value !== null) {
       rawStr = String(vb.value);
     }
+
+    rawStr = sanitizeUtf8(rawStr);
+    const cleanParsed = parsedValue !== undefined ? sanitizeUtf8(parsedValue) : rawStr;
 
     rawRecords.push({
       id: `raw-${deviceId}-${oid.replace(/\./g, '_')}`,
@@ -341,8 +366,8 @@ export async function exportMikrotikHexSMetrics(
       category,
       type,
       rawValue: rawStr,
-      parsedValue: parsedValue !== undefined ? parsedValue : rawStr,
-      unit: unit || undefined,
+      parsedValue: cleanParsed || rawStr,
+      unit: unit ? sanitizeUtf8(unit) : undefined,
       collectedAt: now,
     });
   };
@@ -729,9 +754,9 @@ export async function exportMikrotikHexSMetrics(
             oidName: r.oidName,
             category: r.category,
             type: r.type,
-            rawValue: r.rawValue,
-            parsedValue: r.parsedValue || r.rawValue,
-            unit: r.unit || null,
+            rawValue: sanitizeUtf8(r.rawValue),
+            parsedValue: sanitizeUtf8(r.parsedValue || r.rawValue),
+            unit: r.unit ? sanitizeUtf8(r.unit) : null,
             collectedAt: r.collectedAt,
           }));
 

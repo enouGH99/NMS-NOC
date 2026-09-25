@@ -41,4 +41,16 @@ export const auth = betterAuth({
   },
   secret: process.env.BETTER_AUTH_SECRET || 'nms-noc-production-super-secret-key-32chars-length-min',
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  trustedOrigins: [
+    'http://localhost:3000',
+    'http://localhost:3030',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3030',
+    'http://192.168.100.14:3030',
+    'http://192.168.100.14:3000',
+    'http://192.168.100.230:3000',
+    'http://192.168.100.230:3030',
+    process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  ].filter(Boolean),
 });
