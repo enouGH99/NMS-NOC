@@ -415,6 +415,36 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
             const routerIfaces = interfaces.filter((i) => i.device_id === parent.id);
 
             if (
+              devIp === '192.168.3.240' ||
+              devNameLower.includes('dev') ||
+              devNameLower.includes('switch 2')
+            ) {
+              matchedIface = routerIfaces.find(
+                (i) => i.name.toLowerCase().includes('dev') || i.name.toLowerCase().includes('ether4')
+              );
+              sourcePort = matchedIface?.name || 'ether4-Development';
+              targetPort = 'Port 24 (Uplink)';
+            } else if (
+              devIp === '192.168.3.5' ||
+              devNameLower.includes('office') ||
+              devNameLower.includes('switch 1')
+            ) {
+              matchedIface = routerIfaces.find(
+                (i) => i.name.toLowerCase().includes('office') || i.name.toLowerCase().includes('ether3')
+              );
+              sourcePort = matchedIface?.name || 'ether3-Office';
+              targetPort = 'Port 24 (Uplink)';
+            } else if (
+              devIp === '192.168.3.30' ||
+              devType === 'access_point' ||
+              devNameLower.includes('ap')
+            ) {
+              matchedIface = routerIfaces.find(
+                (i) => i.name.toLowerCase().includes('office') || i.name.toLowerCase().includes('local')
+              );
+              sourcePort = 'Port 8 (PoE)';
+              targetPort = 'LAN / PoE In';
+            } else if (
               devType === 'server' ||
               devNameLower.includes('proxmox') ||
               devNameLower.includes('server') ||
@@ -425,38 +455,12 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
                 (i) => i.name.toLowerCase().includes('server') || i.name.toLowerCase().includes('ether2')
               );
               sourcePort = matchedIface?.name || 'ether2-Server';
-              targetPort = 'vmbr0 (LAN)';
+              targetPort = devType === 'server' ? 'vmbr0 (LAN)' : 'Port 24 (Uplink)';
             } else if (
-              devNameLower.includes('office') ||
-              devNameLower.includes('switch 1') ||
-              devIp === '192.168.3.5'
+              devNameLower.includes('cctv') ||
+              devNameLower.includes('nvr') ||
+              devIp.startsWith('172.31.')
             ) {
-              matchedIface = routerIfaces.find(
-                (i) => i.name.toLowerCase().includes('office') || i.name.toLowerCase().includes('ether3')
-              );
-              sourcePort = matchedIface?.name || 'ether3-Office';
-              targetPort = 'Port 24 (Uplink)';
-            } else if (
-              devNameLower.includes('dev') ||
-              devNameLower.includes('switch 2') ||
-              devIp === '192.168.3.240'
-            ) {
-              matchedIface = routerIfaces.find(
-                (i) => i.name.toLowerCase().includes('dev') || i.name.toLowerCase().includes('ether4')
-              );
-              sourcePort = matchedIface?.name || 'ether4-Development';
-              targetPort = 'Port 24 (Uplink)';
-            } else if (
-              devType === 'access_point' ||
-              devNameLower.includes('ap') ||
-              devIp === '192.168.3.30'
-            ) {
-              matchedIface = routerIfaces.find(
-                (i) => i.name.toLowerCase().includes('office') || i.name.toLowerCase().includes('local')
-              );
-              sourcePort = 'Port 8 (PoE)';
-              targetPort = 'LAN / PoE In';
-            } else if (devNameLower.includes('cctv') || devNameLower.includes('nvr')) {
               matchedIface = routerIfaces.find(
                 (i) => i.name.toLowerCase().includes('cctv') || i.name.toLowerCase().includes('ether5')
               );

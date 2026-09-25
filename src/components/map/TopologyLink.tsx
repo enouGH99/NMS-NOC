@@ -98,33 +98,59 @@ export const TopologyLink: React.FC<TopologyLinkProps> = ({
         />
       )}
 
-      {/* 4. Port Labels at Endpoints (if available) */}
+      {/* 4. Port Labels at Endpoints with Anti-Overlap Pill */}
       {sourcePort && (
-        <text
-          x={sourceCoords.x + (targetCoords.x - sourceCoords.x) * 0.15}
-          y={sourceCoords.y + (targetCoords.y - sourceCoords.y) * 0.15 - 8}
-          textAnchor="middle"
-          fontSize="10"
-          fontWeight="bold"
-          fontFamily="monospace"
-          fill="#94a3b8"
-        >
-          {sourcePort}
-        </text>
+        <g transform={`translate(${sourceCoords.x + (targetCoords.x - sourceCoords.x) * 0.28}, ${sourceCoords.y + (targetCoords.y - sourceCoords.y) * 0.28})`}>
+          <rect
+            x="-38"
+            y="-9"
+            width="76"
+            height="18"
+            rx="5"
+            fill="#090d16"
+            fillOpacity="0.88"
+            stroke="#1e293b"
+            strokeWidth="0.8"
+          />
+          <text
+            x="0"
+            y="3.5"
+            textAnchor="middle"
+            fontSize="9"
+            fontWeight="bold"
+            fontFamily="monospace"
+            fill="#94a3b8"
+          >
+            {sourcePort}
+          </text>
+        </g>
       )}
 
       {targetPort && (
-        <text
-          x={targetCoords.x - (targetCoords.x - sourceCoords.x) * 0.15}
-          y={targetCoords.y - (targetCoords.y - sourceCoords.y) * 0.15 - 8}
-          textAnchor="middle"
-          fontSize="10"
-          fontWeight="bold"
-          fontFamily="monospace"
-          fill="#94a3b8"
-        >
-          {targetPort}
-        </text>
+        <g transform={`translate(${targetCoords.x - (targetCoords.x - sourceCoords.x) * 0.24}, ${targetCoords.y - (targetCoords.y - sourceCoords.y) * 0.24})`}>
+          <rect
+            x="-44"
+            y="-9"
+            width="88"
+            height="18"
+            rx="5"
+            fill="#090d16"
+            fillOpacity="0.88"
+            stroke="#1e293b"
+            strokeWidth="0.8"
+          />
+          <text
+            x="0"
+            y="3.5"
+            textAnchor="middle"
+            fontSize="9"
+            fontWeight="bold"
+            fontFamily="monospace"
+            fill="#94a3b8"
+          >
+            {targetPort}
+          </text>
+        </g>
       )}
 
       {/* 5. Floating Live Mbps Badge at Midpoint */}
