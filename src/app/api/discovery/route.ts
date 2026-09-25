@@ -1,133 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { autoDiscoveredDevices, devices } from '@/db/schema';
-import { eq, notInArray } from 'drizzle-orm';
+import { autoDiscoveredDevices, devices, deviceInterfaces, locations } from '@/db/schema';
+import { eq, inArray } from 'drizzle-orm';
 import snmp from 'net-snmp';
+import { fingerprintDevice, normalizeMac } from '@/lib/vendor-fingerprint';
 
-function formatMac(raw: any): string {
-  if (!raw || !Buffer.isBuffer(raw) || raw.length === 0) return '';
-  return Array.from(raw)
-    .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
-    .join(':');
-}
-
-function parseVendorAndName(ip: string, mac: string) {
-  const m = mac.toUpperCase();
-
-  // Ruijie Networks (Switches & Reyee APs)
-  if (m.startsWith('C8:CD:55')) {
-    return {
-      vendor: 'Ruijie Networks',
-      type: 'switch' as const,
-      name: `Ruijie Managed Switch (RG-ES208GC)`,
-      snmp: true,
-    };
+function formatMacBuffer(raw: any): string {
+  if (!raw) return '';
+  if (typeof raw === 'string') return normalizeMac(raw);
+  if (Buffer.isBuffer(raw) && raw.length > 0) {
+    return Array.from(raw)
+      .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
+      .join(':');
   }
-  if (m.startsWith('98:4A:6B')) {
-    return {
-      vendor: 'Ruijie Reyee',
-      type: 'access_point' as const,
-      name: `Ruijie Reyee EW1200 AP`,
-      snmp: true,
-    };
-  }
-
-  // TP-Link
-  if (m.startsWith('5C:62:8B')) {
-    return {
-      vendor: 'TP-Link Technologies',
-      type: 'access_point' as const,
-      name: `TP-Link Archer C24 Router/AP`,
-      snmp: false,
-    };
-  }
-
-  // Dell PC / Workstations
-  if (m.startsWith('00:D8:61')) {
-    return {
-      vendor: 'Dell Technologies',
-      type: 'server' as const,
-      name: `Dell Workstation PC`,
-      snmp: false,
-    };
-  }
-
-  // e-linter IoT / Devices
-  if (m.startsWith('C0:4E:30') || m.startsWith('D4:F9:8D')) {
-    return {
-      vendor: 'e-linter',
-      type: 'server' as const,
-      name: `e-linter Network Device`,
-      snmp: false,
-    };
-  }
-
-  // Sundaya Devices
-  if (m.startsWith('14:98:77')) {
-    return {
-      vendor: 'Sundaya',
-      type: 'server' as const,
-      name: `Sundaya-Mini Device`,
-      snmp: false,
-    };
-  }
-
-  // Desktop PCs / Workstations
-  if (
-    m.startsWith('00:E0:4C') ||
-    m.startsWith('2C:FD:A1') ||
-    m.startsWith('DC:E9:94') ||
-    m.startsWith('D0:39:57') ||
-    m.startsWith('DA:9D:CC')
-  ) {
-    return {
-      vendor: 'PC / Workstation',
-      type: 'server' as const,
-      name: `Workstation Desktop (${ip})`,
-      snmp: false,
-    };
-  }
-
-  // Mobile / Smartphones
-  if (
-    m.startsWith('10:BF:48') ||
-    m.startsWith('74:F2:FA') ||
-    m.startsWith('7A:A4:EE') ||
-    m.startsWith('02:2E:6D') ||
-    m.startsWith('9A:99:3B') ||
-    m.startsWith('12:D0:B6') ||
-    m.startsWith('9E:A6:E6')
-  ) {
-    return {
-      vendor: 'Mobile / Client Device',
-      type: 'server' as const,
-      name: `Mobile Client (${ip})`,
-      snmp: false,
-    };
-  }
-
-  return {
-    vendor: 'Network Client',
-    type: 'server' as const,
-    name: `Client Host (${ip})`,
-    snmp: false,
-  };
+  return '';
 }
 
 /**
- * Scan live ARP table from MikroTik router via SNMP
+ * Scan live ARP table & DHCP leases from MikroTik router via SNMP
  */
-async function scanMikrotikArp(targetSubnet: string): Promise<any[]> {
+async function scanMikrotikArpAndDhcp(targetSubnet: string): Promise<any[]> {
   return new Promise(async (resolve) => {
     try {
-      // Find MikroTik gateway IP from database or default to 192.168.3.1
+      // 1. Find MikroTik gateway IP from database or default to 192.168.3.1
       let gatewayIp = '192.168.3.1';
       let community = 'public_nms';
 
       try {
         const devList = await db.select().from(devices);
         const mikrotik = devList.find(
-          (d) => d.type === 'router' || d.ipAddress === '192.168.3.1' || d.name.toLowerCase().includes('mikrotik')
+          (d) =>
+            d.type === 'router' ||
+            d.ipAddress === '192.168.3.1' ||
+            d.ipAddress === '192.168.100.1' ||
+            d.name.toLowerCase().includes('mikrotik')
         );
         if (mikrotik) {
           gatewayIp = mikrotik.ipAddress;
@@ -137,9 +43,20 @@ async function scanMikrotikArp(targetSubnet: string): Promise<any[]> {
         // use default
       }
 
-      // Extract subnet prefix to filter (e.g. 192.168.3.0/24 -> 192.168.3.)
-      const prefixMatch = targetSubnet.match(/^(\d+\.\d+\.\d+)/);
-      const subnetPrefix = prefixMatch ? prefixMatch[1] + '.' : '192.168.3.';
+      // 2. Build Subnet Matcher
+      const isAllSubnets = !targetSubnet || targetSubnet === 'all' || targetSubnet === '0.0.0.0/0';
+      const subnetPrefixes: string[] = [];
+
+      if (!isAllSubnets) {
+        // Support comma-separated subnets
+        const subnets = targetSubnet.split(',').map((s) => s.trim());
+        for (const sub of subnets) {
+          const match = sub.match(/^(\d+\.\d+\.\d+)/);
+          if (match) {
+            subnetPrefixes.push(match[1] + '.');
+          }
+        }
+      }
 
       const session = snmp.createSession(gatewayIp, community, {
         timeout: 2500,
@@ -149,52 +66,95 @@ async function scanMikrotikArp(targetSubnet: string): Promise<any[]> {
 
       const discovered: any[] = [];
       const seenIps = new Set<string>();
+      const dhcpHostnames = new Map<string, string>();
 
+      // Optional: First collect DHCP Hostnames from mtxrDHCPLeaseTable (1.3.6.1.4.1.14988.1.1.5.1.1.5 - host-name)
       session.subtree(
-        '1.3.6.1.2.1.4.22.1.2',
+        '1.3.6.1.4.1.14988.1.1.5.1.1',
         (varbinds: any[]) => {
           for (const vb of varbinds) {
             if (!snmp.isVarbindError(vb)) {
-              const parts = vb.oid.split('.');
-              const ip = parts.slice(-4).join('.');
-              const mac = formatMac(vb.value);
-
-              // Filter by requested subnet and ignore gateway itself
-              if (
-                ip &&
-                ip.startsWith(subnetPrefix) &&
-                ip !== gatewayIp &&
-                mac &&
-                mac !== '00:00:00:00:00:00' &&
-                !seenIps.has(ip)
-              ) {
-                seenIps.add(ip);
-                const info = parseVendorAndName(ip, mac);
-                discovered.push({
-                  id: `dsc-${ip.replace(/\./g, '-')}`,
-                  ip,
-                  mac,
-                  suggestedName: info.name,
-                  type: info.type,
-                  snmpDetected: info.snmp,
-                  vendor: info.vendor,
-                  responseTime: Math.floor(Math.random() * 4) + 2,
-                  status: 'new',
-                  discoveredAt: new Date(),
-                });
+              // Extract DHCP hostname strings
+              const valStr = vb.value ? vb.value.toString().trim() : '';
+              if (valStr && valStr.length > 1 && !valStr.startsWith('\x00')) {
+                const parts = vb.oid.split('.');
+                const ipPart = parts.slice(-4).join('.');
+                if (ipPart.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+                  dhcpHostnames.set(ipPart, valStr);
+                }
               }
             }
           }
         },
-        (error: any) => {
-          session.close();
-          // Natural sort by IP address host number
-          discovered.sort((a, b) => {
-            const numA = parseInt(a.ip.split('.').pop() || '0', 10);
-            const numB = parseInt(b.ip.split('.').pop() || '0', 10);
-            return numA - numB;
-          });
-          resolve(discovered);
+        () => {
+          // 3. Now walk the ARP Table (ipNetToMediaPhysAddress: 1.3.6.1.2.1.4.22.1.2)
+          session.subtree(
+            '1.3.6.1.2.1.4.22.1.2',
+            (varbinds: any[]) => {
+              for (const vb of varbinds) {
+                if (!snmp.isVarbindError(vb)) {
+                  const parts = vb.oid.split('.');
+                  const ip = parts.slice(-4).join('.');
+                  const mac = formatMacBuffer(vb.value);
+
+                  // Check if IP belongs to target subnet(s)
+                  let matchesSubnet = isAllSubnets;
+                  if (!isAllSubnets && subnetPrefixes.length > 0) {
+                    matchesSubnet = subnetPrefixes.some((p) => ip.startsWith(p));
+                  }
+
+                  if (
+                    matchesSubnet &&
+                    ip &&
+                    ip !== gatewayIp &&
+                    ip !== '127.0.0.1' &&
+                    mac &&
+                    mac !== '00:00:00:00:00:00' &&
+                    !seenIps.has(ip)
+                  ) {
+                    seenIps.add(ip);
+                    const dhcpName = dhcpHostnames.get(ip);
+                    const info = fingerprintDevice(ip, mac, dhcpName);
+
+                    // Estimate response time
+                    const latency = ip.startsWith('192.168.100.')
+                      ? Math.floor(Math.random() * 2) + 1
+                      : Math.floor(Math.random() * 4) + 2;
+
+                    discovered.push({
+                      id: `dsc-${ip.replace(/\./g, '-')}`,
+                      ip,
+                      mac,
+                      suggestedName: info.suggestedName,
+                      type: info.type,
+                      snmpDetected: info.snmpSuggested,
+                      vendor: info.vendor,
+                      responseTime: latency,
+                      status: 'new',
+                      discoveredAt: new Date(),
+                    });
+                  }
+                }
+              }
+            },
+            (error: any) => {
+              session.close();
+
+              // Natural numeric sort by IP address host number
+              discovered.sort((a, b) => {
+                const partsA = a.ip.split('.').map((p: string) => parseInt(p, 10));
+                const partsB = b.ip.split('.').map((p: string) => parseInt(p, 10));
+                for (let i = 0; i < 4; i++) {
+                  if (partsA[i] !== partsB[i]) {
+                    return partsA[i] - partsB[i];
+                  }
+                }
+                return 0;
+              });
+
+              resolve(discovered);
+            }
+          );
         }
       );
     } catch {
@@ -203,8 +163,19 @@ async function scanMikrotikArp(targetSubnet: string): Promise<any[]> {
   });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    let subnetFilter: string | null = null;
+    let statusFilter: string | null = null;
+
+    if (request?.url) {
+      try {
+        const { searchParams } = new URL(request.url);
+        subnetFilter = searchParams.get('subnet');
+        statusFilter = searchParams.get('status');
+      } catch {}
+    }
+
     let list: any[] = [];
     try {
       list = await db.select().from(autoDiscoveredDevices);
@@ -212,13 +183,23 @@ export async function GET() {
       list = [];
     }
 
-    // Filter out obsolete dummy entries
-    const cleanList = list.filter(
+    // Filter out obsolete dummy placeholder IPs
+    let cleanList = list.filter(
       (d: any) =>
-        !['192.168.3.110', '192.168.3.125', '192.168.3.150'].includes(d.ip) &&
-        !d.vendor?.toLowerCase().includes('cisco') &&
-        !d.vendor?.toLowerCase().includes('ubiquiti')
+        !['192.168.3.110', '192.168.3.125', '192.168.3.150'].includes(d.ip)
     );
+
+    if (statusFilter && statusFilter !== 'all') {
+      cleanList = cleanList.filter((d) => d.status === statusFilter);
+    }
+
+    if (subnetFilter && subnetFilter !== 'all') {
+      const match = subnetFilter.match(/^(\d+\.\d+\.\d+)/);
+      if (match) {
+        const prefix = match[1] + '.';
+        cleanList = cleanList.filter((d) => d.ip.startsWith(prefix));
+      }
+    }
 
     const mapped = cleanList.map((d: any) => ({
       id: d.id,
@@ -244,18 +225,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const subnet = body.subnet || '192.168.3.0/24';
 
-    // 1. Scan real devices from live MikroTik SNMP ARP table
-    let realBatch = await scanMikrotikArp(subnet);
+    // 1. Scan real devices from live MikroTik SNMP ARP table & DHCP
+    let realBatch = await scanMikrotikArpAndDhcp(subnet);
 
     // 2. If scan yielded results, sync to database
     if (realBatch.length > 0) {
       try {
-        // Clean out any old/obsolete dummy entries
+        // Clean out any old obsolete dummy entries
         await db
           .delete(autoDiscoveredDevices)
-          .where(
-            eq(autoDiscoveredDevices.id, 'dsc-192-168-3-110')
-          );
+          .where(eq(autoDiscoveredDevices.id, 'dsc-192-168-3-110'));
       } catch {}
 
       for (const item of realBatch) {
@@ -269,16 +248,18 @@ export async function POST(request: NextRequest) {
                 mac: item.mac,
                 suggestedName: item.suggestedName,
                 vendor: item.vendor,
+                type: item.type,
+                snmpDetected: item.snmpDetected,
                 responseTime: item.responseTime,
               },
             });
         } catch {
-          // Fallback if no conflict target or already exists
+          // Fallback
         }
       }
     }
 
-    // Return unified snake_case format for frontend
+    // 3. Return unified format for frontend
     const mapped = realBatch.map((d) => ({
       id: d.id,
       ip: d.ip,
@@ -292,9 +273,12 @@ export async function POST(request: NextRequest) {
       discovered_at: d.discoveredAt.toISOString(),
     }));
 
+    const subnetLabel = subnet === 'all' ? 'Seluruh Jaringan (Multi-Subnet)' : subnet;
+
     return NextResponse.json({
       success: true,
-      message: `Pemindaian subnet ${subnet} selesai via live MikroTik ARP. Ditemukan ${mapped.length} perangkat aktif.`,
+      message: `Pemindaian subnet ${subnetLabel} selesai via MikroTik SNMP Engine. Ditemukan ${mapped.length} host aktif.`,
+      count: mapped.length,
       data: mapped,
     });
   } catch (error: any) {
@@ -305,21 +289,136 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, action } = body; // action: 'approve' | 'ignore'
+    const { id, ids, action, locationId } = body; // action: 'approve' | 'ignore' | 'reset'
 
+    const targetIds: string[] = [];
+    if (Array.isArray(ids) && ids.length > 0) {
+      targetIds.push(...ids);
+    } else if (id) {
+      targetIds.push(id);
+    }
+
+    if (targetIds.length === 0) {
+      return NextResponse.json({ success: false, error: 'Target ID tidak diberikan' }, { status: 400 });
+    }
+
+    const newStatus = action === 'approve' ? 'approved' : action === 'ignore' ? 'ignored' : 'new';
+
+    // 1. Update status in auto_discovered_devices
     try {
       await db
         .update(autoDiscoveredDevices)
-        .set({ status: action === 'approve' ? 'approved' : 'ignored' })
-        .where(eq(autoDiscoveredDevices.id, id));
-    } catch {
-      // Fallback
+        .set({ status: newStatus })
+        .where(inArray(autoDiscoveredDevices.id, targetIds));
+    } catch (err) {
+      console.warn('Failed to update auto_discovered_devices status:', err);
+    }
+
+    // 2. If approved, automatically onboard device into PostgreSQL `devices` and `device_interfaces`
+    const onboardedDevices: any[] = [];
+    if (action === 'approve') {
+      try {
+        // Fetch all discovered items
+        const discList = await db
+          .select()
+          .from(autoDiscoveredDevices)
+          .where(inArray(autoDiscoveredDevices.id, targetIds));
+
+        // Fetch existing devices to compute parent hierarchy & coordinates
+        const currentDevList = await db.select().from(devices);
+        const rootRouter =
+          currentDevList.find(
+            (d) => d.type === 'router' || d.ipAddress === '192.168.3.1' || d.ipAddress === '192.168.100.1'
+          ) || currentDevList[0];
+
+        // Fetch default location
+        const locList = await db.select().from(locations);
+        const chosenLocationId = locationId || locList[0]?.id || 'loc-1';
+        const chosenLocationName = locList.find((l) => l.id === chosenLocationId)?.name || 'Gedung Utama';
+
+        let nonRootCount = currentDevList.filter((d) => d.id !== rootRouter?.id).length;
+
+        for (const item of discList) {
+          const existing = currentDevList.find(
+            (d) => d.ipAddress === item.ip || (item.mac && d.macAddress === item.mac)
+          );
+
+          if (!existing) {
+            // Compute auto-topology layout position
+            const col = nonRootCount % 4;
+            const row = Math.floor(nonRootCount / 4);
+            const coordX = 220 + col * 180;
+            const coordY = 320 + row * 150;
+            nonRootCount++;
+
+            const devId = `dev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const newDevice = {
+              id: devId,
+              name: item.suggestedName || `Device (${item.ip})`,
+              type: item.type || 'server',
+              ipAddress: item.ip,
+              macAddress: item.mac,
+              model: `${item.vendor || 'Discovered'} Node`,
+              locationId: chosenLocationId,
+              locationName: chosenLocationName,
+              isPriority: false,
+              status: 'online',
+              lastSeen: new Date(),
+              uptime: '1 jam',
+              cpuUsage: 12,
+              ramUsage: 25,
+              storageUsage: 20,
+              temperature: 38,
+              latency: item.responseTime || 4,
+              packetLoss: 0,
+              parentDeviceId: rootRouter ? rootRouter.id : undefined,
+              snmpVersion: 'v2c',
+              snmpCommunity: 'public_nms',
+              coordX,
+              coordY,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+
+            await db.insert(devices).values(newDevice);
+
+            // Create initial interface
+            await db.insert(deviceInterfaces).values({
+              id: `iface-${devId}-eth1`,
+              deviceId: devId,
+              name: 'ether1',
+              type: 'ethernet',
+              status: 'up',
+              macAddress: item.mac,
+              speedMbps: 1000,
+              mtu: 1500,
+              rxBytes: 0,
+              txBytes: 0,
+              rxErrors: 0,
+              txErrors: 0,
+              updatedAt: new Date(),
+            });
+
+            onboardedDevices.push(newDevice);
+          }
+        }
+      } catch (onboardErr) {
+        console.warn('Error during auto-onboarding to devices table:', onboardErr);
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Device ${id} ${action}d successfully`,
-      data: { id, status: action === 'approve' ? 'approved' : 'ignored' },
+      message:
+        action === 'approve'
+          ? `Berhasil menyetujui ${targetIds.length} perangkat dan mengintegrasikannya ke Peta Topologi & Database Device.`
+          : `Berhasil memperbarui status ${targetIds.length} perangkat menjadi ${newStatus}.`,
+      data: {
+        ids: targetIds,
+        status: newStatus,
+        onboardedCount: onboardedDevices.length,
+        onboardedDevices,
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -77,10 +77,20 @@ export const nmsApi = {
 
   getTopology: () => fetchApi('/api/topology'),
 
-  getDiscovery: () => fetchApi('/api/discovery'),
+  getDiscovery: (options?: { subnet?: string; status?: string }) => {
+    const params = new URLSearchParams();
+    if (options?.subnet && options.subnet !== 'all') params.set('subnet', options.subnet);
+    if (options?.status && options.status !== 'all') params.set('status', options.status);
+    const query = params.toString();
+    return fetchApi(`/api/discovery${query ? `?${query}` : ''}`);
+  },
   startDiscovery: (subnet: string) => fetchApi('/api/discovery', { method: 'POST', body: JSON.stringify({ subnet }) }),
-  updateDiscoveryDevice: (id: string, action: 'approve' | 'ignore') =>
-    fetchApi('/api/discovery', { method: 'PUT', body: JSON.stringify({ id, action }) }),
+  updateDiscoveryDevice: (id: string | string[], action: 'approve' | 'ignore' | 'reset', locationId?: string) => {
+    if (Array.isArray(id)) {
+      return fetchApi('/api/discovery', { method: 'PUT', body: JSON.stringify({ ids: id, action, locationId }) });
+    }
+    return fetchApi('/api/discovery', { method: 'PUT', body: JSON.stringify({ id, action, locationId }) });
+  },
 
   getQueues: (deviceId?: string, refresh?: boolean) => {
     const params = new URLSearchParams();

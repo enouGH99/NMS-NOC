@@ -126,9 +126,12 @@ interface NmsContextType {
   addUser: (user: Omit<User, 'id' | 'created_at' | 'last_login'>) => void;
   toggleUserStatus: (id: string) => void;
 
-  startAutoDiscovery: (subnet: string) => void;
+  startAutoDiscovery: (subnet: string) => Promise<void>;
   approveDiscoveredDevice: (id: string) => void;
   ignoreDiscoveredDevice: (id: string) => void;
+  batchApproveDiscoveredDevices: (ids: string[]) => Promise<void>;
+  batchIgnoreDiscoveredDevices: (ids: string[]) => Promise<void>;
+  fetchDiscoveredDevices: (subnet?: string, status?: string) => Promise<void>;
 
   toggleDashboardWidget: (key: keyof DashboardWidgetVisibility) => void;
 
@@ -1130,6 +1133,19 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, []);
 
+  const fetchDiscoveredDevices = useCallback(async (subnet?: string, status?: string) => {
+    try {
+      const res: any = await nmsApi.getDiscovery({ subnet, status });
+      if (res && res.data && Array.isArray(res.data)) {
+        setDiscoveredDevices(res.data);
+      } else if (Array.isArray(res)) {
+        setDiscoveredDevices(res);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch discovered devices:', err);
+    }
+  }, []);
+
   const startAutoDiscovery = useCallback(async (subnet: string) => {
     setIsScanning(true);
     setScanProgress(0);
@@ -1142,20 +1158,24 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 200);
 
     try {
-      const res = await nmsApi.startDiscovery(subnet);
+      const res: any = await nmsApi.startDiscovery(subnet);
       clearInterval(interval);
       setScanProgress(100);
       setIsScanning(false);
 
-      if (res && Array.isArray(res)) {
+      if (res && res.data && Array.isArray(res.data)) {
+        setDiscoveredDevices(res.data);
+      } else if (res && Array.isArray(res)) {
         setDiscoveredDevices(res);
       } else {
-        const freshList = await nmsApi.getDiscovery();
-        if (Array.isArray(freshList)) {
+        const freshList: any = await nmsApi.getDiscovery({ subnet });
+        if (freshList && freshList.data && Array.isArray(freshList.data)) {
+          setDiscoveredDevices(freshList.data);
+        } else if (Array.isArray(freshList)) {
           setDiscoveredDevices(freshList);
         }
       }
-      addAuditLog('AUTO_DISCOVERY', `Menyelesaikan pemindaian subnet ${subnet}`);
+      addAuditLog('AUTO_DISCOVERY', `Menyelesaikan pemindaian subnet ${subnet === 'all' ? 'Semua Subnet' : subnet}`);
     } catch (e) {
       console.warn('Failed to trigger startDiscovery:', e);
       clearInterval(interval);
@@ -1170,10 +1190,10 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rootRouter = devices.find(d => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) || devices[0];
     const nonRootCount = devices.filter(d => d.id !== rootRouter?.id).length;
-    const col = nonRootCount % 3;
-    const row = Math.floor(nonRootCount / 3);
-    const newX = 280 + col * 200;
-    const newY = 350 + row * 160;
+    const col = nonRootCount % 4;
+    const row = Math.floor(nonRootCount / 4);
+    const newX = 220 + col * 180;
+    const newY = 320 + row * 150;
 
     addDevice({
       name: disc.suggested_name,
@@ -1201,14 +1221,83 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(d => (d.id === id ? { ...d, status: 'approved' } : d))
     );
     nmsApi.updateDiscoveryDevice(id, 'approve').catch(e => console.warn('Failed to sync approve discovery:', e));
-  }, [discoveredDevices, locations, addDevice, devices]);
+    addAuditLog('APPROVE_DISCOVERY_DEVICE', `Menyetujui & memantau perangkat baru: ${disc.suggested_name} (${disc.ip})`);
+  }, [discoveredDevices, locations, addDevice, devices, addAuditLog]);
 
   const ignoreDiscoveredDevice = useCallback((id: string) => {
+    const disc = discoveredDevices.find(d => d.id === id);
     setDiscoveredDevices(prev =>
       prev.map(d => (d.id === id ? { ...d, status: 'ignored' } : d))
     );
     nmsApi.updateDiscoveryDevice(id, 'ignore').catch(e => console.warn('Failed to sync ignore discovery:', e));
-  }, []);
+    if (disc) {
+      addAuditLog('IGNORE_DISCOVERY_DEVICE', `Mengabaikan perangkat yang ditemukan: ${disc.suggested_name} (${disc.ip})`);
+    }
+  }, [discoveredDevices, addAuditLog]);
+
+  const batchApproveDiscoveredDevices = useCallback(async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+
+    const rootRouter = devices.find(d => d.type === 'router' || d.name.toLowerCase().includes('mikrotik')) || devices[0];
+    let nonRootCount = devices.filter(d => d.id !== rootRouter?.id).length;
+
+    for (const id of ids) {
+      const disc = discoveredDevices.find(d => d.id === id);
+      if (disc) {
+        const col = nonRootCount % 4;
+        const row = Math.floor(nonRootCount / 4);
+        const newX = 220 + col * 180;
+        const newY = 320 + row * 150;
+        nonRootCount++;
+
+        addDevice({
+          name: disc.suggested_name,
+          type: disc.type,
+          ip_address: disc.ip,
+          mac_address: disc.mac,
+          model: `${disc.vendor} Auto-Discovered`,
+          location_id: locations[0]?.id || 'loc-1',
+          is_priority: false,
+          status: 'online',
+          parent_device_id: rootRouter ? rootRouter.id : undefined,
+          coordinates: { x: newX, y: newY },
+          uptime: '1 jam',
+          cpu_usage: 12,
+          ram_usage: 25,
+          storage_usage: 15,
+          temperature: 38,
+          latency: disc.response_time,
+          packet_loss: 0,
+          snmp_version: 'v2c',
+          snmp_community: 'public_nms',
+        });
+      }
+    }
+
+    setDiscoveredDevices(prev =>
+      prev.map(d => (ids.includes(d.id) ? { ...d, status: 'approved' } : d))
+    );
+
+    try {
+      await nmsApi.updateDiscoveryDevice(ids, 'approve');
+    } catch (e) {
+      console.warn('Failed to sync batch approve discovery:', e);
+    }
+    addAuditLog('BATCH_APPROVE_DISCOVERY', `Menyetujui ${ids.length} perangkat baru secara massal ke Topologi & Database`);
+  }, [discoveredDevices, locations, addDevice, devices, addAuditLog]);
+
+  const batchIgnoreDiscoveredDevices = useCallback(async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    setDiscoveredDevices(prev =>
+      prev.map(d => (ids.includes(d.id) ? { ...d, status: 'ignored' } : d))
+    );
+    try {
+      await nmsApi.updateDiscoveryDevice(ids, 'ignore');
+    } catch (e) {
+      console.warn('Failed to sync batch ignore discovery:', e);
+    }
+    addAuditLog('BATCH_IGNORE_DISCOVERY', `Mengabaikan ${ids.length} perangkat yang ditemukan secara massal`);
+  }, [addAuditLog]);
 
   const pingDevice = useCallback(async (ip: string) => {
     try {
@@ -1343,6 +1432,9 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     startAutoDiscovery,
     approveDiscoveredDevice,
     ignoreDiscoveredDevice,
+    batchApproveDiscoveredDevices,
+    batchIgnoreDiscoveredDevices,
+    fetchDiscoveredDevices,
     toggleDashboardWidget,
     addAuditLog,
     pingDevice,

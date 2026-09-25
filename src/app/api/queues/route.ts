@@ -188,8 +188,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     let targetDeviceId = body.device_id || body.deviceId;
-    if (!targetDeviceId) {
-      const devRows = await db.select().from(devices);
+    const devRows = await db.select().from(devices);
+    const existingDev = devRows.find((d) => d.id === targetDeviceId);
+    if (!existingDev) {
       if (devRows.length > 0) {
         targetDeviceId = devRows[0].id;
       } else {

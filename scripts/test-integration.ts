@@ -23,6 +23,8 @@ import * as UsersRoute from '../src/app/api/users/route';
 import * as AuditLogsRoute from '../src/app/api/audit-logs/route';
 import * as QueuesRoute from '../src/app/api/queues/route';
 import * as RawMetricsRoute from '../src/app/api/devices/[id]/raw-metrics/route';
+import { db } from '../src/db';
+import { devices } from '../src/db/schema';
 
 interface TestResult {
   category: string;
@@ -378,7 +380,8 @@ async function runAllIntegrationTests() {
   let discoveredDeviceId = '';
 
   await runTest('Discovery API', 'GET /api/discovery returns discovered devices', async () => {
-    const res = await DiscoveryRoute.GET();
+    const req = createRequest('/api/discovery', 'GET');
+    const res = await DiscoveryRoute.GET(req);
     assert(res.status === 200, `Expected status 200, got ${res.status}`);
     const json = await res.json();
     assert(json.success === true, 'Expected success === true');
@@ -496,7 +499,26 @@ async function runAllIntegrationTests() {
   });
 
   await runTest('Queue Tree API', 'POST /api/queues creates a new Queue Tree entry with parent, packet_mark, CIR & MIR', async () => {
+    // Ensure at least one router device exists
+    const devList = await db.select().from(devices);
+    let devId = devList[0]?.id;
+    if (!devId) {
+      devId = 'dev-test-router';
+      try {
+        await db.insert(devices).values({
+          id: devId,
+          name: 'MikroTik Test Gateway',
+          type: 'router',
+          ipAddress: '192.168.3.1',
+          status: 'online',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      } catch {}
+    }
+
     const payload = {
+      device_id: devId,
       name: 'WiFi-Tamu-Download',
       parent: 'Total-Download',
       packet_mark: 'guest-in_pkt',
@@ -553,7 +575,8 @@ async function runAllIntegrationTests() {
   // 13. RAW SNMP METRICS API (MikroTik hEX S RouterOS v6.48.4)
   // ----------------------------------------------------
   await runTest('Raw SNMP API', 'GET /api/devices/[id]/raw-metrics returns raw OIDs and categories from database', async () => {
-    const targetDeviceId = 'dev-1';
+    const devList = await db.select().from(devices);
+    const targetDeviceId = devList[0]?.id || 'dev-1';
     const req = createRequest(`/api/devices/${targetDeviceId}/raw-metrics?category=all`);
     const res = await RawMetricsRoute.GET(req, { params: Promise.resolve({ id: targetDeviceId }) });
     assert(res.status === 200, `Expected status 200, got ${res.status}`);

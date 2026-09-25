@@ -223,9 +223,12 @@ Skema database didefinisikan pada [`src/db/schema.ts`](file:///d:/Project%20CI-C
 - Manajemen siklus hidup perbaikan hardware/software (Status: *Pending*, *In Progress*, *Completed*).
 - Pembuatan kode tiket otomatis dengan format `TCK-[TIMESTAMP]-[RANDOM]`.
 
-### 5.7 Subnet Auto-Discovery
-- Pemindaian rentang IP subnet (contoh: `192.168.10.0/24`) secara asinkron.
-- Deteksi vendor perangkat secara otomatis dengan opsi **Approve** (langsung menambahkan perangkat ke database) atau **Ignore**.
+### 5.7 Subnet Auto-Discovery & Vendor Fingerprinting Engine
+- **Multi-Subnet Preset Scanner**: Preset siap pakai untuk `192.168.100.0/24` (Server Farm & Proxmox), `192.168.3.0/24` (R&D & Office LAN), `192.168.2.0/24` (Produksi), `172.31.1.0/24` (CCTV Security), dan `all` (Seluruh range VLAN/Subnet), serta input custom CIDR.
+- **Deep MAC OUI & SNMP Vendor Fingerprinting**: Klasifikasi otomatis 80+ vendor jaringan ternama (Ruijie/Reyee, MikroTik, Cisco, Ubiquiti UniFi, Proxmox VE/QEMU, Dell PowerEdge, Hikvision/Dahua CCTV, TP-Link, Synology, IoT Espressif/Sundaya) beserta tipe perangkat (`router`, `switch`, `access_point`, `server`).
+- **MikroTik DHCP Leases & MNDP Hostname Correlation**: Mengintegrasikan nama hostname asli perangkat dari tabel DHCP lease RouterOS.
+- **1-Click Onboard ke Peta Topologi (`/map`)**: Saat tombol *Setujui & Pantau* atau *Setujui Semua Terpilih* diklik, perangkat otomatis didaftarkan ke PostgreSQL `devices` & `device_interfaces`, dihitung koordinat kanvas topologinya, dihubungkan ke root router (`parent_device_id`), dan langsung muncul di visualisasi peta topologi interaktif.
+- **Batch Operations & Export**: Multi-select checkbox, batch approve/ignore, filter status (Baru, Disetujui, Diabaikan, SNMP Ready), serta ekspor data ke CSV/JSON.
 
 ### 5.8 Laporan & Analisis Kapasitas SLA
 - Analisis tren kapasitas bandwidth dan tren utilitas bulanan.
