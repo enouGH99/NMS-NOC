@@ -12,6 +12,7 @@ import { devices, alertRules, alerts, deviceMetrics, rawSnmpMetrics } from '@/db
 import { eq, and, lt } from 'drizzle-orm';
 import { exportMikrotikHexSMetrics } from './mikrotik-exporter';
 import { sseBroadcaster } from './sse-manager';
+import { dispatchIncidentAlert, dispatchRecoveryAlert } from './telegram-alert';
 
 interface WorkerState {
   isRunning: boolean;
@@ -149,7 +150,7 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
               else if (rule.condition === '<' && currentValue < thresholdNum) isTriggered = true;
 
               if (isTriggered) {
-                // Check if active alert already exists
+                // Check if active alert already exists in database
                 const existingAlerts = await db
                   .select()
                   .from(alerts)
@@ -157,17 +158,67 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
 
                 const alreadyTriggered = existingAlerts.some(a => a.message.includes(rule.name));
                 if (!alreadyTriggered) {
+                  const severityLevel = rule.escalationTier >= 2 ? 'critical' : 'warning';
+                  const alertId = `alt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
                   await db.insert(alerts).values({
-                    id: `alt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    id: alertId,
                     deviceId: dev.id,
                     deviceName: dev.name,
                     ipAddress: dev.ipAddress,
                     message: `[${rule.name}] Nilai ${rule.metric.toUpperCase()} terdeteksi ${currentValue} (Threshold: ${rule.condition} ${rule.threshold})`,
-                    severity: rule.escalationTier >= 2 ? 'critical' : 'warning',
+                    severity: severityLevel,
                     triggeredAt: now,
                     acknowledged: false,
                   });
+
+                  // Dispatch Telegram Alert asynchronously (non-blocking)
+                  dispatchIncidentAlert({
+                    deviceId: dev.id,
+                    deviceName: dev.name,
+                    ipAddress: dev.ipAddress,
+                    metricName: rule.metric,
+                    metricLabel: rule.metric === 'cpu' ? 'Beban CPU' : rule.metric === 'ram' ? 'Pemakaian RAM' : rule.metric === 'temperature' ? 'Suhu Board' : 'Latency Ping',
+                    currentValue,
+                    condition: rule.condition,
+                    threshold: rule.threshold,
+                    severity: severityLevel,
+                    ruleName: rule.name,
+                    unit: rule.metric === 'temperature' ? '°C' : rule.metric === 'latency' ? 'ms' : '%',
+                    timestamp: now,
+                  }).catch(err => console.warn('[SNMP Worker] Telegram alert dispatch error:', err));
                 }
+              } else {
+                // Auto-Recovery Check: If device was in alert state and now recovered, resolve and notify
+                try {
+                  const existingActive = await db
+                    .select()
+                    .from(alerts)
+                    .where(and(eq(alerts.deviceId, dev.id), eq(alerts.acknowledged, false)));
+
+                  const match = existingActive.find(a => a.message.includes(rule.name));
+                  if (match) {
+                    await db.update(alerts).set({
+                      acknowledged: true,
+                      resolvedAt: now,
+                      resolvedBy: 'Auto-Recovery System',
+                      resolutionNotes: `Metrik kembali normal (${currentValue}) di bawah ambang batas ${rule.condition} ${rule.threshold}`,
+                    }).where(eq(alerts.id, match.id));
+
+                    // Dispatch Recovery Notification to Telegram
+                    dispatchRecoveryAlert({
+                      deviceId: dev.id,
+                      deviceName: dev.name,
+                      ipAddress: dev.ipAddress,
+                      metricName: rule.metric,
+                      metricLabel: rule.metric === 'cpu' ? 'Beban CPU' : rule.metric === 'ram' ? 'Pemakaian RAM' : rule.metric === 'temperature' ? 'Suhu Board' : 'Latency Ping',
+                      currentValue,
+                      ruleName: rule.name,
+                      unit: rule.metric === 'temperature' ? '°C' : rule.metric === 'latency' ? 'ms' : '%',
+                      timestamp: now,
+                    }).catch(err => console.warn('[SNMP Worker] Telegram recovery dispatch error:', err));
+                  }
+                } catch {}
               }
             }
           } catch (ruleErr) {

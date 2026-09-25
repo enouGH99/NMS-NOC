@@ -282,6 +282,115 @@ export default function SettingsPage() {
         </M3Card>
       </div>
 
+      {/* Telegram Bot Real-Time Alerting Integration Card */}
+      <M3Card className="p-6 bg-m3-surface-container border border-sky-500/30 space-y-4 shadow-xs">
+        <div className="pb-3 border-b border-m3-outline-variant/30 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-sky-500/10 flex items-center justify-center text-sky-500">
+              <BellRing className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-m3-on-surface uppercase tracking-wider">
+                Integrasi Notifikasi Telegram Bot
+              </h3>
+              <p className="text-xs text-m3-on-surface-variant">
+                Kirim alert insiden kritis & pemulihan langsung ke akun Telegram admin
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            ● Bot Active
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div className="space-y-3 p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30">
+            <div className="text-xs font-bold text-m3-on-surface">Detail Bot Telegram</div>
+            <div className="space-y-2 text-xs text-m3-on-surface-variant">
+              <div className="flex justify-between">
+                <span>Bot Username:</span>
+                <span className="font-mono font-bold text-sky-600 dark:text-sky-400">@nms_sundaya_bot</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Target Chat ID:</span>
+                <span className="font-mono font-bold text-m3-on-surface">1777492435</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Status Engine:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">Terhubung & Siap</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col justify-center gap-2.5 p-4 rounded-m3-2xl bg-m3-surface-container-high border border-m3-outline-variant/30">
+            <div className="text-xs font-bold text-m3-on-surface">Uji Coba Notifikasi</div>
+            <p className="text-[11px] text-m3-on-surface-variant">
+              Kirim pesan uji coba ke Telegram untuk memverifikasi bot dapat mengirimkan pesan ke akun Anda.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <M3Button
+                variant="filled"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/alerts/telegram', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'test' }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      alert('✅ Pesan uji coba berhasil dikirim ke Telegram Anda!');
+                    } else {
+                      alert(`❌ Gagal: ${data.error}`);
+                    }
+                  } catch (e: any) {
+                    alert(`❌ Terjadi kesalahan: ${e.message}`);
+                  }
+                }}
+              >
+                🔔 Uji Kirim Pesan Bot
+              </M3Button>
+              <M3Button
+                variant="filled-tonal"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/alerts/telegram', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'incident',
+                        deviceName: 'MikroTik CCR2004 (Core Gateway)',
+                        ipAddress: '192.168.1.1',
+                        metricName: 'cpu',
+                        metricLabel: 'Beban CPU',
+                        currentValue: 94,
+                        condition: '>=',
+                        threshold: 85,
+                        severity: 'critical',
+                        ruleName: 'Beban CPU Kritis',
+                        unit: '%',
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      alert('🚨 Alert simulasi insiden berhasil dikirim ke Telegram!');
+                    } else {
+                      alert(`ℹ️ Catatan: ${data.reason || 'Pesan dalam masa anti-spam cooldown'}`);
+                    }
+                  } catch (e: any) {
+                    alert(`❌ Terjadi kesalahan: ${e.message}`);
+                  }
+                }}
+              >
+                🚨 Simulasi Alert Insiden
+              </M3Button>
+            </div>
+          </div>
+        </div>
+      </M3Card>
+
       {/* Add / Edit Location Dialog */}
       {locationModalOpen && (
         <M3Dialog
