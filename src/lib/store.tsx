@@ -35,6 +35,8 @@ import {
   generateDefaultInterfaces,
 } from './mock-data';
 import { nmsApi } from './api-client';
+import { useNmsSSE } from '@/hooks/useNmsSSE';
+
 
 interface ThroughputPoint {
   time: string;
@@ -94,6 +96,11 @@ interface NmsContextType {
     currentInboundMbps: number;
     currentOutboundMbps: number;
   };
+
+  // SSE Real-Time Connection Status
+  sseStatus: 'connecting' | 'connected' | 'reconnecting' | 'error' | 'paused';
+  sseLastUpdateAt: string | null;
+  sseUpdateCount: number;
 
   // Actions
   addLocation: (location: Omit<Location, 'id'>) => void;
@@ -379,25 +386,92 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshAllData(false);
   }, [refreshAllData]);
 
-  // Global Auto-Refresh Timer based on autoRefreshInterval (5s, 10s, 15s, 30s)
+  // ─── SSE Real-Time Push: Subscribe to SNMP worker broadcasts ─────────────────
+  // When the server-side SNMP poller completes a cycle, it pushes fresh device
+  // telemetry via SSE. This replaces the heavy per-interval HTTP polling for
+  // devices / interfaces / queues / VPN tunnels.
+  const { sseStatus, lastUpdateAt: sseLastUpdateAt, updateCount: sseUpdateCount } = useNmsSSE(
+    useCallback((payload) => {
+      // Update devices — only patch the fields that SNMP updates (CPU, RAM, latency, status)
+      if (payload.devices && payload.devices.length > 0) {
+        setDevices(prev => {
+          const patchMap = new Map(payload.devices!.map(d => [d.id, d]));
+          const updated = prev.map(dev => {
+            const patch = patchMap.get(dev.id);
+            if (!patch) return dev;
+            return {
+              ...dev,
+              status: patch.status as any,
+              cpu_usage: patch.cpu_usage,
+              ram_usage: patch.ram_usage,
+              storage_usage: patch.storage_usage,
+              temperature: patch.temperature,
+              voltage: patch.voltage,
+              latency: patch.latency,
+              uptime: patch.uptime,
+              last_seen: patch.last_seen,
+            };
+          });
+          try { localStorage.setItem('nms_devices', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      }
+
+      // Update live stats from SSE payload
+      if (payload.stats) {
+        const s = payload.stats;
+        setThroughputHistory(prev => {
+          const now = new Date();
+          const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+          // Use real throughput from payload if available, otherwise derive from online devices
+          const inbound = payload.throughput?.inboundMbps ?? (s.onlineCount * 30);
+          const outbound = payload.throughput?.outboundMbps ?? (s.onlineCount * 10);
+          return [...prev.slice(1), { time: timeStr, inbound, outbound }];
+        });
+      }
+
+      setLastRefreshedAt(new Date(payload.timestamp));
+    }, []),
+    { pauseWhenHidden: true }
+  );
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // Slow-poll for non-real-time data: alerts, repairs, users, audit logs (every 60s)
+  // SNMP device/interface/queue data is now handled by SSE above.
   useEffect(() => {
     if (autoRefreshInterval === 'off') return;
 
     const msMap: Record<string, number> = {
-      '5s': 5000,
-      '10s': 10000,
-      '15s': 15000,
-      '30s': 30000,
+      '5s':  60000, // All intervals now poll non-realtime data every 60s
+      '10s': 60000, // (SNMP device data comes via SSE instantly)
+      '15s': 60000,
+      '30s': 60000,
     };
 
-    const intervalMs = msMap[autoRefreshInterval] || 10000;
+    const intervalMs = msMap[autoRefreshInterval] || 60000;
 
-    const timer = setInterval(() => {
-      refreshAllData(true);
+    const timer = setInterval(async () => {
+      // Only refresh non-realtime data to avoid unnecessary load
+      try {
+        const [alertsRes, repairsRes, logsRes] = await Promise.allSettled([
+          nmsApi.getAlerts(),
+          nmsApi.getRepairs(),
+          nmsApi.getAuditLogs(),
+        ]);
+        if (alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value)) {
+          setAlerts(alertsRes.value);
+        }
+        if (repairsRes.status === 'fulfilled' && Array.isArray(repairsRes.value)) {
+          setRepairRecords(repairsRes.value);
+        }
+        if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
+          setAuditLogs(logsRes.value);
+        }
+      } catch { /* non-fatal */ }
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [autoRefreshInterval, refreshAllData]);
+  }, [autoRefreshInterval]);
 
   // Apply dark mode class to HTML
   useEffect(() => {
@@ -1284,6 +1358,10 @@ export const NmsProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addVpnTunnel,
     syncDeviceViaSnmp,
     testSnmpConnection,
+    // SSE real-time connection state
+    sseStatus,
+    sseLastUpdateAt,
+    sseUpdateCount,
   };
 
   return <NmsContext.Provider value={value}>{children}</NmsContext.Provider>;

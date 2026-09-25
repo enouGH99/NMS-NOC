@@ -49,6 +49,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
     alerts,
     acknowledgeAlert,
     addAuditLog,
+    sseStatus,
+    sseUpdateCount,
+    sseLastUpdateAt,
   } = useNms();
 
   const router = useRouter();
@@ -131,14 +134,48 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenMobileMenu, onOpenSearch }
 
         {/* Right Side: Status Ticker, Role Switcher, Sound, Theme, Alerts, Profile */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Live SNMP Poller Pill */}
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-m3-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold select-none">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span>SNMP Live (30s)</span>
-          </div>
+          {/* SSE Real-Time Status Indicator — replaces static "SNMP Live (30s)" */}
+          {(() => {
+            const isConnected = sseStatus === 'connected';
+            const isReconnecting = sseStatus === 'reconnecting';
+            const isPaused = sseStatus === 'paused';
+            const label = isConnected
+              ? `Live SSE (${sseUpdateCount} updates)`
+              : isReconnecting
+              ? 'Reconnecting...'
+              : isPaused
+              ? 'SSE Paused'
+              : 'Connecting...';
+            const colorClass = isConnected
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+              : isReconnecting
+              ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-700 dark:text-yellow-300'
+              : 'bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300';
+            const dotClass = isConnected
+              ? 'bg-emerald-500'
+              : isReconnecting
+              ? 'bg-yellow-500'
+              : 'bg-red-500';
+            const pingClass = isConnected
+              ? 'bg-emerald-400'
+              : isReconnecting
+              ? 'bg-yellow-400'
+              : 'bg-red-400';
+            return (
+              <div
+                title={sseLastUpdateAt ? `Last update: ${new Date(sseLastUpdateAt).toLocaleTimeString('id-ID')}` : 'Waiting for SNMP data...'}
+                className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-m3-full border text-xs font-semibold select-none cursor-default transition-all duration-500 ${colorClass}`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {isConnected && (
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${pingClass}`} />
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${dotClass}`} />
+                </span>
+                <span>{label}</span>
+              </div>
+            );
+          })()}
 
           {/* Quick Demo Role Switcher */}
           <div className="hidden sm:flex items-center bg-m3-surface-container-low p-0.5 rounded-m3-full border border-m3-outline-variant/30">

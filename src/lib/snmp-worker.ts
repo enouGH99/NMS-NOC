@@ -2,12 +2,16 @@
  * Background SNMP Exporter & Polling Daemon for NMS NOC
  * Automatically and continuously scrapes MikroTik hEX S metrics on a fixed interval
  * and persists them into raw_snmp_metrics and time-series tables in PostgreSQL.
+ *
+ * After each poll cycle, fresh telemetry is broadcast via Server-Sent Events (SSE)
+ * to all connected browser clients — eliminating the need for HTTP polling.
  */
 
 import { db } from '@/db';
 import { devices, alertRules, alerts, deviceMetrics, rawSnmpMetrics } from '@/db/schema';
 import { eq, and, lt } from 'drizzle-orm';
 import { exportMikrotikHexSMetrics } from './mikrotik-exporter';
+import { sseBroadcaster } from './sse-manager';
 
 interface WorkerState {
   isRunning: boolean;
@@ -176,6 +180,52 @@ export async function runSnmpPollCycle(): Promise<{ success: boolean; devicesPol
     workerState.lastScrapedCount = totalOidsExported;
     workerState.totalCycles++;
     workerState.lastError = null;
+
+    // ─── Broadcast fresh telemetry via SSE to all connected clients ───────────
+    // Only broadcast if at least one SSE client is connected (saves DB queries)
+    if (sseBroadcaster.clientCount > 0 && devicesPolled > 0) {
+      try {
+        // Re-fetch latest device state from DB (post-poll, already updated by exporter)
+        const freshDevices = await db.select().from(devices);
+        const onlineCount = freshDevices.filter(d => d.status === 'online').length;
+        const offlineCount = freshDevices.filter(d => d.status === 'offline' || d.status === 'unreachable').length;
+        const warningCount = freshDevices.filter(d => d.status === 'warning').length;
+
+        // Build compact device payload (only fields needed by the UI)
+        const devicePayload = freshDevices.map(d => ({
+          id: d.id,
+          status: d.status,
+          cpu_usage: d.cpuUsage ?? 0,
+          ram_usage: d.ramUsage ?? 0,
+          storage_usage: d.storageUsage ?? 0,
+          temperature: d.temperature ?? 0,
+          voltage: (d as any).voltage ?? undefined,
+          latency: d.latency ?? 0,
+          uptime: d.uptime ?? '',
+          last_seen: new Date().toISOString(),
+        }));
+
+        sseBroadcaster.broadcast({
+          type: 'snmp_update',
+          timestamp: new Date().toISOString(),
+          devicesPolled,
+          devices: devicePayload,
+          stats: {
+            totalDevices: freshDevices.length,
+            onlineCount,
+            offlineCount,
+            warningCount,
+            slaPercent: freshDevices.length > 0
+              ? Number(((onlineCount / freshDevices.length) * 100).toFixed(2))
+              : 100,
+            activeAlertsCount: 0, // Will be updated by client on next slow-poll
+          },
+        });
+      } catch (broadcastErr) {
+        console.warn('[SNMP Worker] SSE broadcast error (non-fatal):', broadcastErr);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     return { success: true, devicesPolled, totalOids: totalOidsExported };
   } catch (err: any) {
