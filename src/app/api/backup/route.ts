@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import util from 'util';
-import { db } from '@/db';
-import { devices, locations, alerts, user } from '@/db/schema';
+import { client, db } from '@/db';
+import {
+  user,
+  locations,
+  devices,
+  deviceInterfaces,
+  queueTraffics,
+  vpnTunnels,
+  alerts,
+  alertRules,
+  repairRecords,
+  reportSchedules,
+  auditLogs,
+  autoDiscoveredDevices,
+  deviceMetrics,
+  rawSnmpMetrics,
+} from '@/db/schema';
 
-const execAsync = util.promisify(exec);
 const BACKUP_DIR = path.join(process.cwd(), 'backups', 'postgres');
 
 export interface BackupFileInfo {
@@ -18,9 +30,105 @@ export interface BackupFileInfo {
 }
 
 function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function cleanEmptyGhostFiles() {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) return;
+    const files = fs.readdirSync(BACKUP_DIR);
+    for (const f of files) {
+      const fullPath = path.join(BACKUP_DIR, f);
+      try {
+        const stats = fs.statSync(fullPath);
+        if (stats.size === 0) {
+          fs.unlinkSync(fullPath);
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Helper to escape SQL values safely for INSERT statements
+ */
+function escapeSqlValue(val: any): string {
+  if (val === null || val === undefined) return 'NULL';
+  if (typeof val === 'number') return isNaN(val) ? 'NULL' : String(val);
+  if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+  if (val instanceof Date) return `'${val.toISOString()}'`;
+  if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'::json`;
+  return `'${String(val).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Generate a complete SQL dump script from database tables
+ */
+async function generateNativeSqlDump(): Promise<string> {
+  const timestamp = new Date().toISOString();
+  const sqlLines: string[] = [
+    `-- ==============================================================================`,
+    `-- NMS-NOC PostgreSQL Database Dump`,
+    `-- Generated At : ${timestamp}`,
+    `-- Application  : NMS-NOC Platform v2.0`,
+    `-- Engine       : Native SQL Exporter`,
+    `-- ==============================================================================`,
+    `BEGIN;`,
+    `SET statement_timeout = 0;`,
+    `SET client_encoding = 'UTF8';`,
+    `SET standard_conforming_strings = on;`,
+    ``,
+  ];
+
+  const tableDefinitions: Array<{ name: string; query: () => Promise<any[]> }> = [
+    { name: 'locations', query: () => db.select().from(locations) },
+    { name: 'devices', query: () => db.select().from(devices) },
+    { name: 'device_interfaces', query: () => db.select().from(deviceInterfaces) },
+    { name: 'queue_traffics', query: () => db.select().from(queueTraffics) },
+    { name: 'vpn_tunnels', query: () => db.select().from(vpnTunnels) },
+    { name: 'alerts', query: () => db.select().from(alerts) },
+    { name: 'alert_rules', query: () => db.select().from(alertRules) },
+    { name: 'repair_records', query: () => db.select().from(repairRecords) },
+    { name: 'report_schedules', query: () => db.select().from(reportSchedules) },
+    { name: 'audit_logs', query: () => db.select().from(auditLogs) },
+    { name: 'auto_discovered_devices', query: () => db.select().from(autoDiscoveredDevices) },
+    { name: 'user', query: () => db.select().from(user) },
+    { name: 'device_metrics', query: () => db.select().from(deviceMetrics).limit(2000) },
+    { name: 'raw_snmp_metrics', query: () => db.select().from(rawSnmpMetrics).limit(2000) },
+  ];
+
+  for (const table of tableDefinitions) {
+    try {
+      const rows = await table.query();
+      if (rows.length === 0) continue;
+
+      sqlLines.push(`-- Table: ${table.name} (${rows.length} rows)`);
+      sqlLines.push(`TRUNCATE TABLE "${table.name}" CASCADE;`);
+
+      const columns = Object.keys(rows[0]);
+      const quotedCols = columns.map((c) => `"${c.replace(/([A-Z])/g, '_$1').toLowerCase()}"`).join(', ');
+
+      for (const row of rows) {
+        const values = columns.map((col) => escapeSqlValue(row[col])).join(', ');
+        sqlLines.push(`INSERT INTO "${table.name}" (${quotedCols}) VALUES (${values}) ON CONFLICT DO NOTHING;`);
+      }
+      sqlLines.push(``);
+    } catch (err: any) {
+      sqlLines.push(`-- Warning: Skipping table ${table.name}: ${err.message}`);
+    }
+  }
+
+  sqlLines.push(`COMMIT;`);
+  sqlLines.push(`-- Dump complete.`);
+
+  return sqlLines.join('\n');
 }
 
 /**
@@ -36,6 +144,8 @@ export async function GET(request: NextRequest) {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
     }
 
+    cleanEmptyGhostFiles();
+
     // Handle direct file download
     if (downloadFile) {
       const safeName = path.basename(downloadFile);
@@ -46,15 +156,21 @@ export async function GET(request: NextRequest) {
       }
 
       const fileBuffer = fs.readFileSync(targetPath);
+      const contentType = safeName.endsWith('.json')
+        ? 'application/json'
+        : safeName.endsWith('.sql.gz')
+        ? 'application/gzip'
+        : 'application/sql';
+
       return new NextResponse(fileBuffer, {
         headers: {
           'Content-Disposition': `attachment; filename="${safeName}"`,
-          'Content-Type': 'application/octet-stream',
+          'Content-Type': contentType,
         },
       });
     }
 
-    // List all files
+    // List all non-empty files
     const files = fs.readdirSync(BACKUP_DIR);
     const backupList: BackupFileInfo[] = [];
 
@@ -63,13 +179,15 @@ export async function GET(request: NextRequest) {
         const fullPath = path.join(BACKUP_DIR, f);
         try {
           const stats = fs.statSync(fullPath);
-          backupList.push({
-            fileName: f,
-            filePath: `/api/backup?download=${encodeURIComponent(f)}`,
-            sizeBytes: stats.size,
-            sizeFormatted: formatBytes(stats.size),
-            createdAt: stats.mtime.toISOString(),
-          });
+          if (stats.size > 0) {
+            backupList.push({
+              fileName: f,
+              filePath: `/api/backup?download=${encodeURIComponent(f)}`,
+              sizeBytes: stats.size,
+              sizeFormatted: formatBytes(stats.size),
+              createdAt: stats.mtime.toISOString(),
+            });
+          }
         } catch {
           // Ignore
         }
@@ -93,7 +211,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/backup
- * Triggers an on-demand database backup
+ * Generates a full native PostgreSQL SQL backup file
  */
 export async function POST(request: NextRequest) {
   try {
@@ -101,68 +219,25 @@ export async function POST(request: NextRequest) {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
     }
 
+    cleanEmptyGhostFiles();
+
     const now = new Date();
     const dateStr = now.toISOString().replace(/[-:T.]/g, '').slice(0, 15);
-    const backupFileName = `nms_db_backup_${dateStr}.sql`;
-    const fullPath = path.join(BACKUP_DIR, backupFileName);
+    const sqlFileName = `nms_db_backup_${dateStr}.sql`;
+    const sqlFullPath = path.join(BACKUP_DIR, sqlFileName);
 
-    let executedViaDocker = false;
+    // Generate Full SQL Dump directly from active PostgreSQL connection
+    const sqlContent = await generateNativeSqlDump();
+    fs.writeFileSync(sqlFullPath, sqlContent, 'utf-8');
 
-    // Try executing pg_dump via docker exec if available
-    try {
-      const containerName = 'nms-noc-postgres';
-      const dbUser = process.env.POSTGRES_USER || 'postgres';
-      const dbName = process.env.POSTGRES_DB || 'nms_db';
-      await execAsync(`docker exec -t ${containerName} pg_dump -U ${dbUser} -d ${dbName} --clean --if-exists --no-owner > "${fullPath}"`);
-      executedViaDocker = true;
-    } catch {
-      // If docker exec fails (e.g. running outside docker socket or direct node), fallback to JSON snapshot
-      const devList = await db.select().from(devices);
-      const locList = await db.select().from(locations);
-      const altList = await db.select().from(alerts);
-      const usrList = await db.select().from(user);
+    const stats = fs.statSync(sqlFullPath);
 
-      const snapshot = {
-        metadata: {
-          database: 'nms_db',
-          createdAt: now.toISOString(),
-          appVersion: '2.0.0',
-          engine: 'drizzle-orm-snapshot',
-        },
-        data: {
-          locations: locList,
-          devices: devList,
-          alerts: altList,
-          users: usrList.map((u: any) => ({ ...u, password: '[REDACTED]' })),
-        },
-      };
-
-      const jsonFileName = `nms_db_backup_${dateStr}.json`;
-      const jsonFullPath = path.join(BACKUP_DIR, jsonFileName);
-      fs.writeFileSync(jsonFullPath, JSON.stringify(snapshot, null, 2), 'utf-8');
-
-      const stats = fs.statSync(jsonFullPath);
-      return NextResponse.json({
-        success: true,
-        message: 'Snapshot backup database berhasil dibuat (JSON Format).',
-        backupFile: {
-          fileName: jsonFileName,
-          filePath: `/api/backup?download=${encodeURIComponent(jsonFileName)}`,
-          sizeBytes: stats.size,
-          sizeFormatted: formatBytes(stats.size),
-          createdAt: now.toISOString(),
-          type: 'json_snapshot',
-        },
-      });
-    }
-
-    const stats = fs.statSync(fullPath);
     return NextResponse.json({
       success: true,
-      message: 'Backup database PostgreSQL berhasil dibuat via pg_dump.',
+      message: `Backup database PostgreSQL berhasil dibuat (${formatBytes(stats.size)}).`,
       backupFile: {
-        fileName: backupFileName,
-        filePath: `/api/backup?download=${encodeURIComponent(backupFileName)}`,
+        fileName: sqlFileName,
+        filePath: `/api/backup?download=${encodeURIComponent(sqlFileName)}`,
         sizeBytes: stats.size,
         sizeFormatted: formatBytes(stats.size),
         createdAt: now.toISOString(),
