@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   Radio,
   Terminal,
+  Sparkles,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -78,6 +79,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Operasional & Analitik',
       items: [
+        {
+          label: 'AI Advisor & Copilot',
+          href: '/advisor',
+          icon: Sparkles,
+          badge: 'AIOps',
+          badgeVariant: 'info',
+        },
         { label: 'Log & Observability', href: '/logs', icon: Terminal },
         { label: 'Auto-Discovery & Topologi', href: '/topology', icon: Network },
         { label: 'Log Perbaikan', href: '/repairs', icon: Wrench },

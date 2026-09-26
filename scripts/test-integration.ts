@@ -23,6 +23,8 @@ import * as UsersRoute from '../src/app/api/users/route';
 import * as AuditLogsRoute from '../src/app/api/audit-logs/route';
 import * as QueuesRoute from '../src/app/api/queues/route';
 import * as RawMetricsRoute from '../src/app/api/devices/[id]/raw-metrics/route';
+import * as AdvisorRoute from '../src/app/api/advisor/route';
+import * as HealthRoute from '../src/app/api/health/route';
 import { db } from '../src/db';
 import { devices } from '../src/db/schema';
 
@@ -584,6 +586,55 @@ async function runAllIntegrationTests() {
     assert(json.success === true, 'Expected success === true');
     assert(Array.isArray(json.data), 'Expected array of raw metrics');
     assert(typeof json.totalCount === 'number', 'Expected totalCount number');
+  });
+
+  // ----------------------------------------------------
+  // 14. NOC AI ADVISOR & COPILOT API (Tahap 6)
+  // ----------------------------------------------------
+  await runTest('AI Advisor API', 'GET /api/advisor returns active AI provider status', async () => {
+    const req = createRequest('/api/advisor');
+    const res = await AdvisorRoute.GET(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(typeof json.config?.provider === 'string', 'Expected provider string');
+  });
+
+  await runTest('AI Advisor API', 'POST /api/advisor runs AI diagnostics and returns RCA & scripts', async () => {
+    const req = createRequest('/api/advisor', 'POST', {
+      prompt: 'Diagnosa anomali jaringan dan buatkan script QoS Queue Tree PCQ MikroTik',
+    });
+    const res = await AdvisorRoute.POST(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(typeof json.answer === 'string', 'Expected answer text string');
+    assert(typeof json.providerUsed === 'string', 'Expected providerUsed string');
+    assert(typeof json.anomalyReport?.overallHealthScore === 'number', 'Expected health score number');
+    assert(Array.isArray(json.recommendedScripts), 'Expected recommendedScripts array');
+  });
+
+  await runTest('AI Advisor API', 'PUT /api/advisor tests and updates AI provider credentials', async () => {
+    const req = createRequest('/api/advisor', 'PUT', {
+      provider: 'builtin',
+      modelName: 'NOC-Expert-Heuristic-v2',
+    });
+    const res = await AdvisorRoute.PUT(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+  });
+
+  // ----------------------------------------------------
+  // 15. SYSTEM HEALTHCHECK API (Tahap 6 Hardening)
+  // ----------------------------------------------------
+  await runTest('Health API', 'GET /api/health verifies PostgreSQL, Memory, and Uptime', async () => {
+    const res = await HealthRoute.GET();
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.status === 'healthy', 'Expected status === healthy');
+    assert(typeof json.uptimeSeconds === 'number', 'Expected uptimeSeconds number');
+    assert(json.services?.database?.status === 'healthy', 'Expected DB status healthy');
   });
 
   // ----------------------------------------------------
