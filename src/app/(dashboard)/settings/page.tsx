@@ -24,6 +24,7 @@ import {
   Server,
   Layers,
 } from 'lucide-react';
+import { DatabaseBackupCard } from '@/components/settings/DatabaseBackupCard';
 
 export default function SettingsPage() {
   const { soundEnabled, setSoundEnabled, locations, addLocation, updateLocation, deleteLocation, devices } = useNms();
@@ -390,6 +391,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </M3Card>
+
+      {/* Automated PostgreSQL Database Backup Card */}
+      <DatabaseBackupCard />
 
       {/* Add / Edit Location Dialog */}
       {locationModalOpen && (

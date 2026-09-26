@@ -25,6 +25,7 @@ import * as QueuesRoute from '../src/app/api/queues/route';
 import * as RawMetricsRoute from '../src/app/api/devices/[id]/raw-metrics/route';
 import * as AdvisorRoute from '../src/app/api/advisor/route';
 import * as HealthRoute from '../src/app/api/health/route';
+import * as BackupRoute from '../src/app/api/backup/route';
 import { db } from '../src/db';
 import { devices } from '../src/db/schema';
 
@@ -635,6 +636,28 @@ async function runAllIntegrationTests() {
     assert(json.status === 'healthy', 'Expected status === healthy');
     assert(typeof json.uptimeSeconds === 'number', 'Expected uptimeSeconds number');
     assert(json.services?.database?.status === 'healthy', 'Expected DB status healthy');
+  });
+
+  // ----------------------------------------------------
+  // 16. AUTOMATED DATABASE BACKUP API
+  // ----------------------------------------------------
+  await runTest('Backup API', 'GET /api/backup returns backup files list and retention policy', async () => {
+    const req = createRequest('/api/backup');
+    const res = await BackupRoute.GET(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(json.retentionDays === 14, 'Expected retentionDays === 14');
+    assert(Array.isArray(json.backups), 'Expected backups array');
+  });
+
+  await runTest('Backup API', 'POST /api/backup creates an on-demand database snapshot', async () => {
+    const req = createRequest('/api/backup', 'POST');
+    const res = await BackupRoute.POST(req);
+    assert(res.status === 200, `Expected status 200, got ${res.status}`);
+    const json = await res.json();
+    assert(json.success === true, 'Expected success === true');
+    assert(typeof json.backupFile?.fileName === 'string', 'Expected backup fileName');
   });
 
   // ----------------------------------------------------

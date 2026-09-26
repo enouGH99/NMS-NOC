@@ -1,0 +1,211 @@
+{
+  "metadata": {
+    "database": "nms_db",
+    "createdAt": "2026-09-26T02:07:25.248Z",
+    "appVersion": "2.0.0",
+    "engine": "drizzle-orm-snapshot"
+  },
+  "data": {
+    "locations": [
+      {
+        "id": "loc-default",
+        "name": "Server Room Utama",
+        "building": "Gedung Utama",
+        "floor": "Lantai 1",
+        "description": "Ruang Server & Core Network",
+        "deviceCount": 0,
+        "createdAt": "2026-08-19T20:28:18.026Z"
+      },
+      {
+        "id": "loc-1787146105326",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-08-19T13:28:25.326Z"
+      },
+      {
+        "id": "loc-1787146840116",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-08-19T13:40:40.116Z"
+      },
+      {
+        "id": "loc-1787147465255",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-08-19T13:51:05.255Z"
+      },
+      {
+        "id": "loc-1787147564471",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-08-19T13:52:44.471Z"
+      },
+      {
+        "id": "loc-1790331187954",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T10:13:07.954Z"
+      },
+      {
+        "id": "loc-1790331420661",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T10:17:00.661Z"
+      },
+      {
+        "id": "loc-1790331722484",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T10:22:02.484Z"
+      },
+      {
+        "id": "loc-1790331960141",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T10:26:00.141Z"
+      },
+      {
+        "id": "loc-1790350635981",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T15:37:15.981Z"
+      },
+      {
+        "id": "loc-1790351042823",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T15:44:02.823Z"
+      },
+      {
+        "id": "loc-1790379589248",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-25T23:39:49.248Z"
+      },
+      {
+        "id": "loc-1790381895342",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-26T00:18:15.342Z"
+      },
+      {
+        "id": "loc-1790388364689",
+        "name": "Data Center Gedung C",
+        "building": "Gedung C",
+        "floor": "Lantai B1",
+        "description": "Server rack room",
+        "deviceCount": 0,
+        "createdAt": "2026-09-26T02:06:04.689Z"
+      }
+    ],
+    "devices": [
+      {
+        "id": "dev-mikrotik-rumah",
+        "name": "Router Mikrotik Rumah",
+        "type": "router",
+        "ipAddress": "192.168.10.1",
+        "macAddress": "DC:2C:6E:8A:11:01",
+        "model": "MikroTik RouterOS Gateway",
+        "locationId": "loc-default",
+        "locationName": "Server Room Utama",
+        "isPriority": true,
+        "status": "online",
+        "lastSeen": "2026-08-19T22:53:00.985Z",
+        "uptime": "7 jam 52 menit",
+        "cpuUsage": 3,
+        "ramUsage": 78,
+        "storageUsage": 57,
+        "temperature": 37,
+        "latency": 221,
+        "packetLoss": 0,
+        "parentDeviceId": null,
+        "snmpVersion": "v2c",
+        "snmpCommunity": "public",
+        "coordX": 400,
+        "coordY": 260,
+        "createdAt": "2026-08-19T20:52:27.874Z",
+        "updatedAt": "2026-08-19T22:53:00.985Z"
+      },
+      {
+        "id": "dev-1787178469284",
+        "name": "Ruiji RG-ES205GC-6378FB",
+        "type": "switch",
+        "ipAddress": "192.168.10.4",
+        "macAddress": "00:15:6D:88:99:AA",
+        "model": "Ubiquiti Networks Auto-Discovered",
+        "locationId": "loc-default",
+        "locationName": "Server Room Utama",
+        "isPriority": false,
+        "status": "online",
+        "lastSeen": "2026-08-19T22:27:50.780Z",
+        "uptime": "1 jam",
+        "cpuUsage": 12,
+        "ramUsage": 25,
+        "storageUsage": 15,
+        "temperature": 38,
+        "latency": 6,
+        "packetLoss": 0,
+        "parentDeviceId": null,
+        "snmpVersion": "v2c",
+        "snmpCommunity": "public_nms",
+        "coordX": 400,
+        "coordY": 300,
+        "createdAt": "2026-08-19T22:27:50.780Z",
+        "updatedAt": "2026-08-21T10:52:51.762Z"
+      }
+    ],
+    "alerts": [],
+    "users": [
+      {
+        "id": "usr-admin",
+        "name": "Dimas (Admin)",
+        "email": "admin@kantor.go.id",
+        "emailVerified": true,
+        "image": null,
+        "role": "admin",
+        "phone": null,
+        "status": "active",
+        "lastLogin": null,
+        "createdAt": "2026-08-19T19:55:22.090Z",
+        "updatedAt": "2026-08-19T19:55:22.090Z",
+        "password": "[REDACTED]"
+      }
+    ]
+  }
+}
